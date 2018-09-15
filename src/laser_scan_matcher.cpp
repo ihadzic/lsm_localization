@@ -36,7 +36,6 @@
  */
 
 #include <laser_scan_matcher/laser_scan_matcher.h>
-#include <pcl_conversions/pcl_conversions.h>
 #include <boost/assign.hpp>
 
 namespace scan_tools
@@ -113,16 +112,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   else
     ROS_INFO("using frame-to-frame matching");
 
-  if (use_cloud_input_)
-  {
-    cloud_subscriber_ = nh_.subscribe(
-      "cloud", 1, &LaserScanMatcher::cloudCallback, this);
-  }
-  else
-  {
-    scan_subscriber_ = nh_.subscribe(
-      "scan", 1, &LaserScanMatcher::scanCallback, this);
-  }
+  scan_subscriber_ = nh_.subscribe(
+    "scan", 1, &LaserScanMatcher::scanCallback, this);
 
   if (use_imu_)
   {
@@ -191,26 +182,6 @@ void LaserScanMatcher::initParams()
 
   if (!nh_private_.getParam ("initialpose_topic_name", initialpose_topic_))
     initialpose_topic_ = "initialpose";
-
-  if (!nh_private_.getParam ("use_cloud_input", use_cloud_input_))
-    use_cloud_input_= false;
-
-
-  // **** input type - laser scan, or point clouds?
-  // if false, will subscribe to LaserScan msgs on /scan.
-  // if true, will subscribe to PointCloud2 msgs on /cloud
-  if (use_cloud_input_)
-  {
-    if (!nh_private_.getParam ("cloud_range_min", cloud_range_min_))
-      cloud_range_min_ = 0.1;
-    if (!nh_private_.getParam ("cloud_range_max", cloud_range_max_))
-      cloud_range_max_ = 50.0;
-    if (!nh_private_.getParam ("cloud_res", cloud_res_))
-      cloud_res_ = 0.05;
-
-    input_.min_reading = cloud_range_min_;
-    input_.max_reading = cloud_range_max_;
-  }
 
   // **** keyframe params: when to generate the keyframe scan
   // if either is set to 0, reduces to frame-to-frame matching
@@ -455,30 +426,6 @@ void LaserScanMatcher::velStmpCallback(const geometry_msgs::TwistStamped::ConstP
   latest_vel_msg_ = twist_msg->twist;
 
   received_vel_ = true;
-}
-
-void LaserScanMatcher::cloudCallback (const PointCloudT::ConstPtr& cloud)
-{
-  boost::mutex::scoped_lock(mutex_);
-  std_msgs::Header cloud_header = pcl_conversions::fromPCL(cloud->header);
-
-  // **** if first scan, cache the tf from base to the scanner
-  if (!initialized_)
-  {
-    // cache the static tf from base to laser
-    if (!getBaseToLaserTf(cloud_header.frame_id))
-    {
-      ROS_WARN("Skipping scan");
-      return;
-    }
-
-    PointCloudToLDP(cloud, prev_ldp_scan_);
-    last_icp_time_ = cloud_header.stamp;
-    initialized_ = true;
-  }
-  LDP curr_ldp_scan;
-  PointCloudToLDP(cloud, curr_ldp_scan);
-  processScan(curr_ldp_scan, cloud_header.stamp);
 }
 
 void LaserScanMatcher::constructScan(void)
@@ -944,75 +891,6 @@ bool LaserScanMatcher::newKeyframeNeeded(const tf::Transform& d)
   if (x*x + y*y > kf_dist_linear_sq_) return true;
 
   return false;
-}
-
-void LaserScanMatcher::PointCloudToLDP(const PointCloudT::ConstPtr& cloud,
-                                             LDP& ldp)
-{
-  double max_d2 = cloud_res_ * cloud_res_;
-
-  PointCloudT cloud_f;
-
-  cloud_f.points.push_back(cloud->points[0]);
-
-  for (unsigned int i = 1; i < cloud->points.size(); ++i)
-  {
-    const PointT& pa = cloud_f.points[cloud_f.points.size() - 1];
-    const PointT& pb = cloud->points[i];
-
-    double dx = pa.x - pb.x;
-    double dy = pa.y - pb.y;
-    double d2 = dx*dx + dy*dy;
-
-    if (d2 > max_d2)
-    {
-      cloud_f.points.push_back(pb);
-    }
-  }
-
-  unsigned int n = cloud_f.points.size();
-
-  ldp = ld_alloc_new(n);
-
-  for (unsigned int i = 0; i < n; i++)
-  {
-    // calculate position in laser frame
-    if (is_nan(cloud_f.points[i].x) || is_nan(cloud_f.points[i].y))
-    {
-      ROS_WARN("Laser Scan Matcher: Cloud input contains NaN values. \
-                Please use a filtered cloud input.");
-    }
-    else
-    {
-      double r = sqrt(cloud_f.points[i].x * cloud_f.points[i].x +
-                      cloud_f.points[i].y * cloud_f.points[i].y);
-
-      if (r > cloud_range_min_ && r < cloud_range_max_)
-      {
-        ldp->valid[i] = 1;
-        ldp->readings[i] = r;
-      }
-      else
-      {
-        ldp->valid[i] = 0;
-        ldp->readings[i] = -1;  // for invalid range
-      }
-    }
-
-    ldp->theta[i] = atan2(cloud_f.points[i].y, cloud_f.points[i].x);
-    ldp->cluster[i]  = -1;
-  }
-
-  ldp->min_theta = ldp->theta[0];
-  ldp->max_theta = ldp->theta[n-1];
-
-  ldp->odometry[0] = 0.0;
-  ldp->odometry[1] = 0.0;
-  ldp->odometry[2] = 0.0;
-
-  ldp->true_pose[0] = 0.0;
-  ldp->true_pose[1] = 0.0;
-  ldp->true_pose[2] = 0.0;
 }
 
 void LaserScanMatcher::laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,

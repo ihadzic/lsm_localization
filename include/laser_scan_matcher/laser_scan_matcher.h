@@ -53,11 +53,6 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl_ros/point_cloud.h>
-
 #include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
 #undef min
 #undef max
@@ -74,17 +69,12 @@ class LaserScanMatcher
 
   private:
 
-    typedef pcl::PointXYZ           PointT;
-    typedef pcl::PointCloud<PointT> PointCloudT;
-
     // **** ros
-
     ros::NodeHandle nh_;
     ros::NodeHandle nh_private_;
 
     ros::Subscriber reset_subscriber_;
     ros::Subscriber scan_subscriber_;
-    ros::Subscriber cloud_subscriber_;
     ros::Subscriber map_subscriber_;
     ros::Subscriber odom_subscriber_;
     ros::Subscriber imu_subscriber_;
@@ -109,9 +99,6 @@ class LaserScanMatcher
     std::string fixed_frame_;
     std::string default_scan_frame_;
     std::string initialpose_topic_;
-    double cloud_range_min_;
-    double cloud_range_max_;
-    double cloud_res_;
     double default_range_min_;
     double default_range_max_;
     double default_angle_min_;
@@ -130,8 +117,6 @@ class LaserScanMatcher
     bool publish_pose_with_covariance_stamped_;
     std::vector<double> position_covariance_;
     std::vector<double> orientation_covariance_;
-
-    bool use_cloud_input_;
 
     double kf_dist_linear_;
     double kf_dist_linear_sq_;
@@ -205,8 +190,6 @@ class LaserScanMatcher
     
     void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
                               LDP& ldp);
-    void PointCloudToLDP(const PointCloudT::ConstPtr& cloud,
-                               LDP& ldp);
     void constructedScanToLDP(LDP& ldp);
     void constructScan(void);
 
@@ -215,8 +198,6 @@ class LaserScanMatcher
     void initialposeCallback (const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg);
 
     void scanCallback (const sensor_msgs::LaserScan::ConstPtr& scan_msg);
-    void cloudCallback (const PointCloudT::ConstPtr& cloud);
-
     void odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg);
     void imuCallback (const sensor_msgs::Imu::ConstPtr& imu_msg);
     void velCallback (const geometry_msgs::Twist::ConstPtr& twist_msg);
