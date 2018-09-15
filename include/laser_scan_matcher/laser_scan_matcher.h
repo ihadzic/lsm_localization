@@ -186,11 +186,7 @@ class LaserScanMatcher
     sensor_msgs::Imu last_used_imu_msg_;
     nav_msgs::Odometry latest_odom_msg_;
     nav_msgs::Odometry last_used_odom_msg_;
-
     geometry_msgs::Twist latest_vel_msg_;
-
-    std::vector<double> a_cos_;
-    std::vector<double> a_sin_;
 
     std::vector<double> constructed_intensities_;
     std::vector<double> constructed_ranges_;
@@ -227,7 +223,6 @@ class LaserScanMatcher
     void velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg);
     void resetCallback (const std_msgs::Empty::ConstPtr& empty_msg);
 
-    void createCache (const sensor_msgs::LaserScan::ConstPtr& scan_msg);
     bool getBaseToLaserTf (const std::string& frame_id);
 
     bool newKeyframeNeeded(const tf::Transform& d);

@@ -630,7 +630,6 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
   if (!initialized_)
   {
     ROS_INFO("first scan observed, initializing");
-    createCache(scan_msg);    // caches the sin and cos of all angles
 
     // cache the static tf from base to laser
     if (!getBaseToLaserTf(scan_msg->header.frame_id))
@@ -638,6 +637,8 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
       ROS_WARN("Skipping scan");
       return;
     }
+    input_.min_reading = scan_msg->range_min;
+    input_.max_reading = scan_msg->range_max;
 
     laserScanToLDP(scan_msg, prev_ldp_scan_);
     last_icp_time_ = scan_msg->header.stamp;
@@ -1080,22 +1081,6 @@ void LaserScanMatcher::constructedScanToLDP(LDP& ldp)
   ldp->true_pose[0] = 0.0;
   ldp->true_pose[1] = 0.0;
   ldp->true_pose[2] = 0.0;
-}
-
-void LaserScanMatcher::createCache (const sensor_msgs::LaserScan::ConstPtr& scan_msg)
-{
-  a_cos_.clear();
-  a_sin_.clear();
-
-  for (unsigned int i = 0; i < scan_msg->ranges.size(); ++i)
-  {
-    double angle = scan_msg->angle_min + i * scan_msg->angle_increment;
-    a_cos_.push_back(cos(angle));
-    a_sin_.push_back(sin(angle));
-  }
-
-  input_.min_reading = scan_msg->range_min;
-  input_.max_reading = scan_msg->range_max;
 }
 
 bool LaserScanMatcher::getBaseToLaserTf (const std::string& frame_id)
