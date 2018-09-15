@@ -757,12 +757,12 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
   if (output_.valid) {
     // the correction of the laser's position, in the laser frame
     ROS_INFO("found correlation transform: x=%f, y=%f, yaw=%f",
-	     output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
+             output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
     tf::Transform ref2scan, pcl2ref;
     createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
-			ref2scan);
+                        ref2scan);
     createTfFromXYTheta(initial_pose_in_pcl_x_, initial_pose_in_pcl_y_,
-			initial_pose_in_pcl_yaw_, pcl2ref);
+                        initial_pose_in_pcl_yaw_, pcl2ref);
     f2b_ = f2pcl_ * pcl2ref * ref2scan * laser_to_base_;
     doPublish(time);
   } else
