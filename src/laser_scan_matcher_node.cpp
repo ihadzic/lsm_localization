@@ -37,8 +37,29 @@
 
 #include <laser_scan_matcher/laser_scan_matcher.h>
 
+// Workaround for a bug in CSM library. CSM does not properly
+// handle all cases of singular matrix so an error trickles
+// down in to the GSL library and causes the error handler
+// to kick in. Our handler catches that error and
+// and throws an exception. The exception is then caught
+// in the caller and handled as failed matching. Only
+// the GSL_EDOM errors are handled, other errors (potentially
+// due to our bugs are still going to crash us so that we
+// can fix them the right way.
+void csm_gsl_error_handler(const char* reason, const char *file, int line, int gsl_errno)
+{
+
+  ROS_ERROR("intercepted GSL error in %s/%d: %s (%d)",
+            file, line, reason, gsl_errno);
+  if (gsl_errno == GSL_EDOM)
+    throw gsl_errno;
+  else
+    exit(-1);
+}
+
 int main(int argc, char** argv)
 {
+  gsl_set_error_handler(csm_gsl_error_handler);
   ros::init(argc, argv, "LaserScanMatcher");
   ros::NodeHandle nh;
   ros::NodeHandle nh_private("~");

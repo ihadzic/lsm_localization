@@ -745,8 +745,15 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
   }
 
   // *** scan match - using point to line icp from CSM
-  sm_icp(&input_, &output_);
-
+  try {
+    sm_icp(&input_, &output_);
+  } catch(int e) {
+    if (e == GSL_EDOM) {
+      ROS_ERROR("sm_icp failed, probably singular matrix");
+      output_.valid = false;
+    } else
+      throw e;
+  }
   if (output_.valid) {
     // the correction of the laser's position, in the laser frame
     ROS_INFO("found correlation transform: x=%f, y=%f, yaw=%f",
@@ -835,13 +842,11 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
   }
 
   // *** scan match - using point to line icp from CSM
-
   sm_icp(&input_, &output_);
   tf::Transform corr_ch;
 
   if (output_.valid)
   {
-
     // the correction of the laser's position, in the laser frame
     tf::Transform corr_ch_l;
     createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], corr_ch_l);
