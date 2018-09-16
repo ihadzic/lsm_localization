@@ -758,6 +758,10 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
     // the correction of the laser's position, in the laser frame
     ROS_INFO("found correlation transform: x=%f, y=%f, yaw=%f",
              output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
+    ROS_INFO("variances: %f, %f, %f",
+	     gsl_matrix_get(output_.cov_x_m, 0, 0),
+	     gsl_matrix_get(output_.cov_x_m, 1, 1),
+	     gsl_matrix_get(output_.cov_x_m, 2, 2));
     tf::Transform ref2scan, pcl2ref;
     createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
                         ref2scan);
