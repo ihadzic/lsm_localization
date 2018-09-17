@@ -50,7 +50,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   received_odom_(false),
   received_vel_(false),
   have_map_(false),
-  constructed_scan_valid_(false),
+  initialpose_valid_(false),
   map_res_(0.0),
   map_width_(0),
   map_height_(0)
@@ -151,7 +151,7 @@ void LaserScanMatcher::resetState()
 
   constructed_intensities_.clear();
   constructed_ranges_.clear();
-  constructed_scan_valid_ = false;
+  initialpose_valid_ = false;
 
   initial_pose_in_pcl_x_ = 0.0;
   initial_pose_in_pcl_y_ = 0.0;
@@ -550,7 +550,7 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
   if (use_map_) {
     constructScan();
-    constructed_scan_valid_ = true;
+    initialpose_valid_ = true;
   }
 }
 
@@ -613,7 +613,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
 
   LDP curr_ldp_scan;
   if (use_map_) {
-    if (constructed_scan_valid_) {
+    if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
       LDP initial_pose_ldp_scan;
       constructedScanToLDP(initial_pose_ldp_scan);

@@ -108,7 +108,7 @@ class LaserScanMatcher
     double default_time_inc_;
     double map_occupancy_threshold_;
     bool use_map_;
-    bool constructed_scan_valid_;
+    bool initialpose_valid_;
     bool publish_constructed_scan_;
     bool publish_tf_;
     bool publish_pose_;
