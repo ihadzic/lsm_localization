@@ -156,6 +156,9 @@ void LaserScanMatcher::resetState()
   initial_pose_in_pcl_x_ = 0.0;
   initial_pose_in_pcl_y_ = 0.0;
   initial_pose_in_pcl_yaw_ = 0.0;
+  predicted_pose_in_pcl_x_ = 0.0;
+  predicted_pose_in_pcl_y_ = 0.0;
+  predicted_pose_in_pcl_yaw_ = 0.0;
 
   f2b_.setIdentity();
   f2b_kf_.setIdentity();
@@ -441,9 +444,9 @@ void LaserScanMatcher::constructScan(void)
   // indices into the map for the region of interest
   // x0, y0: lower-left corner index
   // w, h  : width and height in indices
-  int x0 = (int)((initial_pose_in_pcl_x_ - range_max) / map_res_);
+  int x0 = (int)((predicted_pose_in_pcl_x_ - range_max) / map_res_);
   if (x0 < 0) x0 = 0;
-  int y0 = (int)((initial_pose_in_pcl_y_ - range_max) / map_res_);
+  int y0 = (int)((predicted_pose_in_pcl_y_ - range_max) / map_res_);
   if (y0 < 0) y0 = 0;
   int w = 2 * (int)(range_max / map_res_);
   int h = w;
@@ -467,12 +470,12 @@ void LaserScanMatcher::constructScan(void)
   for (int y = y0; y < y0 + h; y++) {
     for (int x = x0; x < x0 + w; x++) {
       if (map_grid_[y][x] > map_occupancy_threshold_) {
-        double delta_x =  x * map_res_ - initial_pose_in_pcl_x_;
-        double delta_y = y * map_res_ - initial_pose_in_pcl_y_;
+        double delta_x =  x * map_res_ - predicted_pose_in_pcl_x_;
+        double delta_y = y * map_res_ - predicted_pose_in_pcl_y_;
         double rho = sqrt(delta_x * delta_x + delta_y * delta_y);
         double theta = atan2(delta_y, delta_x);
         if (theta < 0.0) theta = 2 * M_PI + theta;
-        int theta_index = (int)((theta - initial_pose_in_pcl_yaw_) / angle_inc) % num_angles;
+        int theta_index = (int)((theta - predicted_pose_in_pcl_yaw_) / angle_inc) % num_angles;
         // either no point ever recorded for this angle, so take it
         // or the current point is closer than previously recorded point
         if (rho > range_min &&
@@ -542,6 +545,9 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   initial_pose_in_pcl_x_ = pose_in_pcl.getOrigin().getX();
   initial_pose_in_pcl_y_ = pose_in_pcl.getOrigin().getY();
   initial_pose_in_pcl_yaw_ = tf::getYaw(pose_in_pcl.getRotation());
+  predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_;
+  predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_;
+  predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
   if (use_map_) {
     constructScan();
     constructed_scan_valid_ = true;
@@ -770,8 +776,8 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
     tf::Transform ref2scan, pcl2ref;
     createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
                         ref2scan);
-    createTfFromXYTheta(initial_pose_in_pcl_x_, initial_pose_in_pcl_y_,
-                        initial_pose_in_pcl_yaw_, pcl2ref);
+    createTfFromXYTheta(predicted_pose_in_pcl_x_, predicted_pose_in_pcl_y_,
+                        predicted_pose_in_pcl_yaw_, pcl2ref);
     f2b_ = f2pcl_ * pcl2ref * ref2scan * laser_to_base_;
     doPublish(time);
   } else

@@ -150,6 +150,9 @@ class LaserScanMatcher
     double initial_pose_in_pcl_x_;
     double initial_pose_in_pcl_y_;
     double initial_pose_in_pcl_yaw_;
+    double predicted_pose_in_pcl_x_;
+    double predicted_pose_in_pcl_y_;
+    double predicted_pose_in_pcl_yaw_;
     double observed_range_min_;
     double observed_range_max_;
     double observed_angle_min_;
