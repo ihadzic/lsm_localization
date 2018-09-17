@@ -455,10 +455,15 @@ void LaserScanMatcher::constructScan(void)
     predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_ + odom_delta_yaw;
     if      (predicted_pose_in_pcl_yaw_ >= M_PI) predicted_pose_in_pcl_yaw_ -= 2.0 * M_PI;
     else if (predicted_pose_in_pcl_yaw_ < -M_PI) predicted_pose_in_pcl_yaw_ += 2.0 * M_PI;
+    ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
+              reference_odom_msg_.pose.pose.position.x, reference_odom_msg_.pose.pose.position.y);
+    ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
+              latest_odom_msg_.pose.pose.position.x, latest_odom_msg_.pose.pose.position.y);
+    ROS_DEBUG("%s: delta_odom=(%f, %f)@%f", __func__,
+              odom_delta_x, odom_delta_y, 180.0 * odom_delta_yaw / M_PI);
   }
-
-  ROS_INFO("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
-           range_min, range_max, angle_min, angle_max, angle_inc);
+  ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
+            range_min, range_max, angle_min, angle_max, angle_inc);
   // indices into the map for the region of interest
   // x0, y0: lower-left corner index
   // w, h  : width and height in indices
@@ -473,8 +478,8 @@ void LaserScanMatcher::constructScan(void)
 
   // clear intensity array
   int num_angles = (int)round((angle_max - angle_min + angle_inc) / angle_inc);
-  ROS_INFO("%s: x0=%d, y0=%d, w=%d, h=%d, num_angles=%d", __func__,
-           x0, y0, w, h, num_angles);
+  ROS_DEBUG("%s: x0=%d, y0=%d, w=%d, h=%d, num_angles=%d", __func__,
+            x0, y0, w, h, num_angles);
   constructed_intensities_.clear();
   constructed_intensities_.reserve(num_angles);
   constructed_ranges_.clear();
