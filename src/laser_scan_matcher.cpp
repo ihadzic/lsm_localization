@@ -511,6 +511,7 @@ void LaserScanMatcher::constructScan(void)
 
 void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg)
 {
+  boost::mutex::scoped_lock(mutex_);
   tf::Transform pose;
 
   if (!have_map_) {
@@ -537,16 +538,13 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     ROS_WARN("incorrect frame for initial pose: '%s' vs. '%s'",
              pose_msg->header.frame_id.c_str(), fixed_frame_.c_str());
 
-  {
-    boost::mutex::scoped_lock(mutex_);
-    tf::Transform pose_in_pcl = pcl2f_ * pose;
-    initial_pose_in_pcl_x_ = pose_in_pcl.getOrigin().getX();
-    initial_pose_in_pcl_y_ = pose_in_pcl.getOrigin().getY();
-    initial_pose_in_pcl_yaw_ = tf::getYaw(pose_in_pcl.getRotation());
-    if (use_map_) {
-      constructScan();
-      constructed_scan_valid_ = true;
-    }
+  tf::Transform pose_in_pcl = pcl2f_ * pose;
+  initial_pose_in_pcl_x_ = pose_in_pcl.getOrigin().getX();
+  initial_pose_in_pcl_y_ = pose_in_pcl.getOrigin().getY();
+  initial_pose_in_pcl_yaw_ = tf::getYaw(pose_in_pcl.getRotation());
+  if (use_map_) {
+    constructScan();
+    constructed_scan_valid_ = true;
   }
 }
 
