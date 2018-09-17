@@ -612,11 +612,11 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
   if (use_map_) {
     if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
-      LDP initial_pose_ldp_scan;
+      LDP ref_pose_ldp_scan;
       constructScan();
-      constructedScanToLDP(initial_pose_ldp_scan);
+      constructedScanToLDP(ref_pose_ldp_scan);
       laserScanToLDP(scan_msg, curr_ldp_scan);
-      processScan(curr_ldp_scan, initial_pose_ldp_scan, scan_msg->header.stamp);
+      processScan(curr_ldp_scan, ref_pose_ldp_scan, scan_msg->header.stamp);
     }
   } else {
     laserScanToLDP(scan_msg, curr_ldp_scan);
