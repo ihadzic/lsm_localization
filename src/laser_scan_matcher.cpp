@@ -548,10 +548,7 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_;
   predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_;
   predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
-  if (use_map_) {
-    constructScan();
-    initialpose_valid_ = true;
-  }
+  initialpose_valid_ = true;
 }
 
 void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map_msg)
@@ -616,6 +613,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
       LDP initial_pose_ldp_scan;
+      constructScan();
       constructedScanToLDP(initial_pose_ldp_scan);
       laserScanToLDP(scan_msg, curr_ldp_scan);
       processScan(curr_ldp_scan, initial_pose_ldp_scan, scan_msg->header.stamp);
