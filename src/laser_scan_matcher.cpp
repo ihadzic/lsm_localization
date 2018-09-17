@@ -608,6 +608,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     initialized_ = true;
   }
 
+  ros::WallTime start = ros::WallTime::now();
   LDP curr_ldp_scan;
   if (use_map_) {
     if (initialpose_valid_) {
@@ -622,6 +623,8 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     laserScanToLDP(scan_msg, curr_ldp_scan);
     processScan(curr_ldp_scan, scan_msg->header.stamp);
   }
+  double dur = (ros::WallTime::now() - start).toSec() * 1e3;
+  ROS_INFO("complete scan processing total duration: %.1f ms", dur);
 }
 
 void LaserScanMatcher::doPublish(const ros::Time& time)
