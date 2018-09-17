@@ -518,6 +518,13 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     return;
   }
 
+  if (use_odom_ && !received_odom_) {
+    ROS_WARN("odom never received, cannot process initial pose");
+    return;
+  }
+
+  reference_odom_msg_ = latest_odom_msg_;
+
   // convert the input pose (typically in 'map' frame into lsm_fixed frame)
   pose.setOrigin(tf::Vector3(pose_msg->pose.pose.position.x,
                              pose_msg->pose.pose.position.y,
