@@ -45,7 +45,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   nh_(nh),
   nh_private_(nh_private),
   initialized_(false),
-  reset_requested_(false),
   received_imu_(false),
   received_odom_(false),
   received_vel_(false),
@@ -134,8 +133,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
       vel_subscriber_ = nh_.subscribe(
         "vel", 1, &LaserScanMatcher::velCallback, this);
   }
-  reset_subscriber_ = nh_.subscribe(
-        "lsm/reset", 1, &LaserScanMatcher::resetCallback, this);
 }
 
 LaserScanMatcher::~LaserScanMatcher()
@@ -170,8 +167,6 @@ void LaserScanMatcher::resetState()
   output_.cov_x_m = 0;
   output_.dx_dy1_m = 0;
   output_.dx_dy2_m = 0;
-
-  reset_requested_ = false;
 }
 
 void LaserScanMatcher::initParams()
@@ -413,14 +408,6 @@ void LaserScanMatcher::velCallback(const geometry_msgs::Twist::ConstPtr& twist_m
   latest_vel_msg_ = *twist_msg;
 
   received_vel_ = true;
-}
-
-void LaserScanMatcher::resetCallback(const std_msgs::Empty::ConstPtr& empty_msg)
-{
-  boost::mutex::scoped_lock(mutex_);
-
-  ROS_INFO("LaserScanMatcher reset requested");
-  reset_requested_ = true;
 }
 
 void LaserScanMatcher::velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg)
@@ -742,11 +729,6 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
 {
   ros::WallTime start = ros::WallTime::now();
 
-  if (reset_requested_) {
-    ROS_INFO("requested reset ignored because it has no meaning in map mode");
-    reset_requested_ = false;
-  }
-
   ref_ldp_scan->odometry[0] = 0.0;
   ref_ldp_scan->odometry[1] = 0.0;
   ref_ldp_scan->odometry[2] = 0.0;
@@ -816,8 +798,6 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 {
   ros::WallTime start = ros::WallTime::now();
 
-  if (reset_requested_)
-      resetState();
   // CSM is used in the following way:
   // The scans are always in the laser frame
   // The reference scan (prevLDPcan_) has a pose of [0, 0, 0]

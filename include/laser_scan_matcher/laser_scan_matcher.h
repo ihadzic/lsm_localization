@@ -73,7 +73,6 @@ class LaserScanMatcher
     ros::NodeHandle nh_;
     ros::NodeHandle nh_private_;
 
-    ros::Subscriber reset_subscriber_;
     ros::Subscriber scan_subscriber_;
     ros::Subscriber map_subscriber_;
     ros::Subscriber odom_subscriber_;
@@ -137,7 +136,6 @@ class LaserScanMatcher
 
     boost::mutex mutex_;
 
-    bool reset_requested_;
     bool initialized_;
     bool have_map_;
     bool received_imu_;
@@ -205,8 +203,6 @@ class LaserScanMatcher
     void imuCallback (const sensor_msgs::Imu::ConstPtr& imu_msg);
     void velCallback (const geometry_msgs::Twist::ConstPtr& twist_msg);
     void velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg);
-    void resetCallback (const std_msgs::Empty::ConstPtr& empty_msg);
-
     bool getBaseToLaserTf (const std::string& frame_id);
 
     bool newKeyframeNeeded(const tf::Transform& d);
