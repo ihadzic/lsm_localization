@@ -618,7 +618,8 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
       constructedScanToLDP(ref_pose_ldp_scan);
       laserScanToLDP(scan_msg, curr_ldp_scan);
       processScan(curr_ldp_scan, ref_pose_ldp_scan, scan_msg->header.stamp);
-    }
+    } else
+      ROS_INFO("initial pose not received yet, scan processing skipped");
   } else {
     laserScanToLDP(scan_msg, curr_ldp_scan);
     processScan(curr_ldp_scan, scan_msg->header.stamp);
