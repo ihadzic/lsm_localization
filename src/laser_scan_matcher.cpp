@@ -388,7 +388,7 @@ void LaserScanMatcher::imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg)
   latest_imu_msg_ = *imu_msg;
   if (!received_imu_)
   {
-    last_used_imu_msg_ = *imu_msg;
+    reference_imu_msg_ = *imu_msg;
     received_imu_ = true;
   }
 }
@@ -399,7 +399,7 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
   latest_odom_msg_ = *odom_msg;
   if (!received_odom_)
   {
-    last_used_odom_msg_ = *odom_msg;
+    reference_odom_msg_ = *odom_msg;
     received_odom_ = true;
   }
 }
@@ -1020,30 +1020,30 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
   if (use_odom_ && received_odom_)
   {
     pr_ch_x = latest_odom_msg_.pose.pose.position.x -
-              last_used_odom_msg_.pose.pose.position.x;
+              reference_odom_msg_.pose.pose.position.x;
 
     pr_ch_y = latest_odom_msg_.pose.pose.position.y -
-              last_used_odom_msg_.pose.pose.position.y;
+              reference_odom_msg_.pose.pose.position.y;
 
     pr_ch_a = tf::getYaw(latest_odom_msg_.pose.pose.orientation) -
-              tf::getYaw(last_used_odom_msg_.pose.pose.orientation);
+              tf::getYaw(reference_odom_msg_.pose.pose.orientation);
 
     if      (pr_ch_a >= M_PI) pr_ch_a -= 2.0 * M_PI;
     else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
 
-    last_used_odom_msg_ = latest_odom_msg_;
+    reference_odom_msg_ = latest_odom_msg_;
   }
 
   // **** use imu
   if (use_imu_ && received_imu_)
   {
     pr_ch_a = tf::getYaw(latest_imu_msg_.orientation) -
-              tf::getYaw(last_used_imu_msg_.orientation);
+              tf::getYaw(reference_imu_msg_.orientation);
 
     if      (pr_ch_a >= M_PI) pr_ch_a -= 2.0 * M_PI;
     else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
 
-    last_used_imu_msg_ = latest_imu_msg_;
+    reference_imu_msg_ = latest_imu_msg_;
   }
 }
 
