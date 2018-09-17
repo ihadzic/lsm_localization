@@ -439,6 +439,24 @@ void LaserScanMatcher::constructScan(void)
   double angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
   double angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
 
+  if (use_odom_) {
+    // calculate how much has odom changed relative to the reference
+    double odom_delta_x = latest_odom_msg_.pose.pose.position.x -
+      reference_odom_msg_.pose.pose.position.x;
+    double odom_delta_y = latest_odom_msg_.pose.pose.position.y -
+      reference_odom_msg_.pose.pose.position.y;
+    double odom_delta_yaw = tf::getYaw(latest_odom_msg_.pose.pose.orientation) -
+      tf::getYaw(reference_odom_msg_.pose.pose.orientation);
+    if      (odom_delta_yaw >= M_PI) odom_delta_yaw -= 2.0 * M_PI;
+    else if (odom_delta_yaw < -M_PI) odom_delta_yaw += 2.0 * M_PI;
+    // apply calculated delta to the reference pose
+    predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_ + odom_delta_x;
+    predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_ + odom_delta_y;
+    predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_ + odom_delta_yaw;
+    if      (predicted_pose_in_pcl_yaw_ >= M_PI) predicted_pose_in_pcl_yaw_ -= 2.0 * M_PI;
+    else if (predicted_pose_in_pcl_yaw_ < -M_PI) predicted_pose_in_pcl_yaw_ += 2.0 * M_PI;
+  }
+
   ROS_INFO("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
            range_min, range_max, angle_min, angle_max, angle_inc);
   // indices into the map for the region of interest
