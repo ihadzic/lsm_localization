@@ -76,25 +76,25 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   if (publish_pose_)
   {
     pose_publisher_  = nh_.advertise<geometry_msgs::Pose2D>(
-      "pose2D", 5);
+      "lsm/pose2D", 5);
   }
 
   if (publish_pose_stamped_)
   {
     pose_stamped_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
-      "pose_stamped", 5);
+      "lsm/pose_stamped", 5);
   }
 
   if (publish_pose_with_covariance_)
   {
     pose_with_covariance_publisher_  = nh_.advertise<geometry_msgs::PoseWithCovariance>(
-      "pose_with_covariance", 5);
+      "lsm/pose_with_covariance", 5);
   }
 
   if (publish_pose_with_covariance_stamped_)
   {
     pose_with_covariance_stamped_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-      "pose_with_covariance_stamped", 5);
+      "lsm/pose", 5);
   }
 
   // *** subscribers
