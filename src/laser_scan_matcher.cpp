@@ -228,6 +228,12 @@ void LaserScanMatcher::initParams()
   if (!nh_private_.getParam ("default_time_inc", default_time_inc_))
     default_time_inc_ = default_scan_time_ * default_angle_inc_ / (default_angle_max_ - default_angle_min_);
 
+  if (!nh_private_.getParam ("max_variance_trans", max_variance_trans_))
+    max_variance_trans_ = 1e-5;
+
+  if (!nh_private_.getParam ("max_variance_rot", max_variance_rot_))
+    max_variance_rot_ = 1e-5;
+
   // **** Are velocity input messages stamped?
   // if false, will subscribe to Twist msgs on /vel
   // if true, will subscribe to TwistStamped msgs on /vel
@@ -773,20 +779,26 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
       throw e;
   }
   if (output_.valid) {
-    // the correction of the laser's position, in the laser frame
-    ROS_INFO("found correlation transform: x=%f, y=%f, yaw=%f",
-             output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
-    ROS_INFO("variances: %f, %f, %f",
-             gsl_matrix_get(output_.cov_x_m, 0, 0),
-             gsl_matrix_get(output_.cov_x_m, 1, 1),
-             gsl_matrix_get(output_.cov_x_m, 2, 2));
-    tf::Transform ref2scan, pcl2ref;
-    createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
-                        ref2scan);
-    createTfFromXYTheta(predicted_pose_in_pcl_x_, predicted_pose_in_pcl_y_,
-                        predicted_pose_in_pcl_yaw_, pcl2ref);
-    f2b_ = f2pcl_ * pcl2ref * ref2scan * laser_to_base_;
-    doPublish(time);
+    if (!input_.do_compute_covariance ||
+        (gsl_matrix_get(output_.cov_x_m, 0, 0) < max_variance_trans_ &&
+         gsl_matrix_get(output_.cov_x_m, 1, 1) < max_variance_trans_ &&
+         gsl_matrix_get(output_.cov_x_m, 2, 2) < max_variance_rot_)) {
+      // the correction of the laser's position, in the laser frame
+      ROS_INFO("found correlation transform: x=%f, y=%f, yaw=%f",
+               output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
+      if (input_.do_compute_covariance)
+        ROS_INFO("variances: %f, %f, %f",
+                 gsl_matrix_get(output_.cov_x_m, 0, 0),
+                 gsl_matrix_get(output_.cov_x_m, 1, 1),
+                 gsl_matrix_get(output_.cov_x_m, 2, 2));
+      tf::Transform ref2scan, pcl2ref;
+      createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
+                          ref2scan);
+      createTfFromXYTheta(predicted_pose_in_pcl_x_, predicted_pose_in_pcl_y_,
+                          predicted_pose_in_pcl_yaw_, pcl2ref);
+      f2b_ = f2pcl_ * pcl2ref * ref2scan * laser_to_base_;
+      doPublish(time);
+    }
   } else
     ROS_WARN("Error in scan matching");
 

@@ -98,6 +98,8 @@ class LaserScanMatcher
     std::string fixed_frame_;
     std::string default_scan_frame_;
     std::string initialpose_topic_;
+    double max_variance_trans_;
+    double max_variance_rot_;
     double default_range_min_;
     double default_range_max_;
     double default_angle_min_;
