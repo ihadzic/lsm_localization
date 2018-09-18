@@ -187,8 +187,8 @@ class LaserScanMatcher
 
     void initParams();
     void resetState();
-    void processScan(LDP& curr_ldp_scan, const ros::Time& time);
-    void processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
+    int processScan(LDP& curr_ldp_scan, const ros::Time& time);
+    int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
     void doPublish(const ros::Time& time);
     
     void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,

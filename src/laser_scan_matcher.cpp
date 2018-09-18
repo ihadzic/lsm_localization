@@ -626,6 +626,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
 
   ros::WallTime start = ros::WallTime::now();
   LDP curr_ldp_scan;
+  int r = 0;
   if (use_map_) {
     if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
@@ -633,15 +634,17 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
       constructScan();
       constructedScanToLDP(ref_pose_ldp_scan);
       laserScanToLDP(scan_msg, curr_ldp_scan);
-      processScan(curr_ldp_scan, ref_pose_ldp_scan, scan_msg->header.stamp);
+      r = processScan(curr_ldp_scan, ref_pose_ldp_scan, scan_msg->header.stamp);
     } else
       ROS_INFO("initial pose not received yet, scan processing skipped");
   } else {
     laserScanToLDP(scan_msg, curr_ldp_scan);
-    processScan(curr_ldp_scan, scan_msg->header.stamp);
+    r = processScan(curr_ldp_scan, scan_msg->header.stamp);
   }
-  double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-  ROS_DEBUG("complete scan processing total duration: %.1f ms", dur);
+  if (r) {
+    double dur = (ros::WallTime::now() - start).toSec() * 1e3;
+    ROS_INFO("complete scan processing total duration: %.1f ms", dur);
+  }
 }
 
 void LaserScanMatcher::doPublish(const ros::Time& time)
@@ -731,7 +734,7 @@ void LaserScanMatcher::doPublish(const ros::Time& time)
 
 }
 
-void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time)
+int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time)
 {
   ros::WallTime start = ros::WallTime::now();
 
@@ -798,17 +801,21 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
                           predicted_pose_in_pcl_yaw_, pcl2ref);
       f2b_ = f2pcl_ * pcl2ref * ref2scan * laser_to_base_;
       doPublish(time);
-    }
-  } else
+      double dur = (ros::WallTime::now() - start).toSec() * 1e3;
+      ROS_INFO("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
+      return 1;
+    } else
+      return 0;
+  } else {
     ROS_WARN("Error in scan matching");
-
-  double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-  ROS_DEBUG("Scan matcher total duration: %.1f ms", dur);
+    return 0;
+  }
 }
 
-void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
+int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 {
   ros::WallTime start = ros::WallTime::now();
+  int success = 0;
 
   // CSM is used in the following way:
   // The scans are always in the laser frame
@@ -890,6 +897,7 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
     f2b_ = f2b_kf_ * corr_ch;
 
     doPublish(time);
+    success = 1;
   }
   else
   {
@@ -917,6 +925,7 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
   double dur = (ros::WallTime::now() - start).toSec() * 1e3;
   ROS_DEBUG("Scan matcher total duration: %.1f ms", dur);
+  return success;
 }
 
 bool LaserScanMatcher::newKeyframeNeeded(const tf::Transform& d)
