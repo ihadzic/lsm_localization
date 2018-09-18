@@ -635,7 +635,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     processScan(curr_ldp_scan, scan_msg->header.stamp);
   }
   double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-  ROS_INFO("complete scan processing total duration: %.1f ms", dur);
+  ROS_DEBUG("complete scan processing total duration: %.1f ms", dur);
 }
 
 void LaserScanMatcher::doPublish(const ros::Time& time)
@@ -791,7 +791,7 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
     ROS_WARN("Error in scan matching");
 
   double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-  ROS_INFO("Scan matcher total duration: %.1f ms", dur);
+  ROS_DEBUG("Scan matcher total duration: %.1f ms", dur);
 }
 
 void LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
