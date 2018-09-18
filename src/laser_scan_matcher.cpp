@@ -742,8 +742,8 @@ void LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const 
   input_.laser_ref  = ref_ldp_scan;
   input_.laser_sens = curr_ldp_scan;
   input_.first_guess[0] = 0.0;
-  input_.first_guess[0] = 0.0;
-  input_.first_guess[0] = 0.0;
+  input_.first_guess[1] = 0.0;
+  input_.first_guess[2] = 0.0;
 
   // clear old covariance gsl matrices
   if (output_.cov_x_m)
