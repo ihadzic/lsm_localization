@@ -565,6 +565,11 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_;
   predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
   initialpose_valid_ = true;
+  // reflect the incoming initial pose if set up to publish
+  // on compatible topic
+  if (publish_pose_with_covariance_stamped_) {
+    pose_with_covariance_stamped_publisher_.publish(pose_msg);
+  }
 }
 
 void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map_msg)
