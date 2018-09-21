@@ -640,6 +640,18 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
       constructedScanToLDP(ref_pose_ldp_scan);
       laserScanToLDP(scan_msg, curr_ldp_scan);
       r = processScan(curr_ldp_scan, ref_pose_ldp_scan, scan_msg->header.stamp);
+      if (r) {
+        // if localization was successful, use the estimated pose
+        // as the reference for next time
+        tf::Transform pose_in_pcl = pcl2f_ * f2b_;
+        initial_pose_in_pcl_x_ = pose_in_pcl.getOrigin().getX();
+        initial_pose_in_pcl_y_ = pose_in_pcl.getOrigin().getY();
+        initial_pose_in_pcl_yaw_ = tf::getYaw(pose_in_pcl.getRotation());
+        predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_;
+        predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_;
+        predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
+        reference_odom_msg_ = latest_odom_msg_;
+      }
     } else
       ROS_INFO("initial pose not received yet, scan processing skipped");
   } else {
