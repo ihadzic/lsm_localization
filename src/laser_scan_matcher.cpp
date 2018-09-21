@@ -446,8 +446,8 @@ void LaserScanMatcher::constructScan(void)
     predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_ + odom_delta_x;
     predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_ + odom_delta_y;
     predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_ + odom_delta_yaw;
-    if      (predicted_pose_in_pcl_yaw_ >= M_PI) predicted_pose_in_pcl_yaw_ -= 2.0 * M_PI;
-    else if (predicted_pose_in_pcl_yaw_ < -M_PI) predicted_pose_in_pcl_yaw_ += 2.0 * M_PI;
+    while (predicted_pose_in_pcl_yaw_ >= M_PI) predicted_pose_in_pcl_yaw_ -= 2.0 * M_PI;
+    while (predicted_pose_in_pcl_yaw_ < -M_PI) predicted_pose_in_pcl_yaw_ += 2.0 * M_PI;
     ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
               reference_odom_msg_.pose.pose.position.x, reference_odom_msg_.pose.pose.position.y);
     ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
@@ -486,19 +486,30 @@ void LaserScanMatcher::constructScan(void)
   for (int y = y0; y < y0 + h; y++) {
     for (int x = x0; x < x0 + w; x++) {
       if (map_grid_[y][x] > map_occupancy_threshold_) {
-        double delta_x =  x * map_res_ - predicted_pose_in_pcl_x_;
+        double delta_x = x * map_res_ - predicted_pose_in_pcl_x_;
         double delta_y = y * map_res_ - predicted_pose_in_pcl_y_;
         double rho = sqrt(delta_x * delta_x + delta_y * delta_y);
-        double theta = atan2(delta_y, delta_x);
-        if (theta < 0.0) theta = 2 * M_PI + theta;
-        int theta_index = (int)((theta - predicted_pose_in_pcl_yaw_) / angle_inc) % num_angles;
+        // go to polar cordinates relative to the scanner heading
+        // REVISIT: we are missing base_link to base_scan transform!
+        //          so this only works if x-axis of the LIDAR frame
+        //          is aligned with x-asix of the robot base frame
+        double theta = atan2(delta_y, delta_x) - predicted_pose_in_pcl_yaw_;
+        // ensure that theta is in -pi to + pi (nominal range)
+        while (theta < -M_PI) theta += 2 * M_PI;
+        while (theta >= M_PI) theta -= 2 * M_PI;
+        // if we are out of lower range try adding 2pi to
+        // handles LIDARs whose angle_min goes from 0 to 2 * pi
+        if (theta < angle_min) theta = 2 * M_PI + theta;
+        if (theta > angle_max) continue;
+        if (rho < range_min) continue;
+        if (rho > range_max) continue;
+        int theta_index = (int)((theta - angle_min) / angle_inc) % num_angles;
         // either no point ever recorded for this angle, so take it
         // or the current point is closer than previously recorded point
-        if (rho > range_min &&
-            ((constructed_intensities_[theta_index] == 0.0 &&
+        if ((constructed_intensities_[theta_index] == 0.0 &&
               constructed_ranges_[theta_index] == 0.0) ||
-             rho < constructed_ranges_[theta_index])
-            ) {
+            rho < constructed_ranges_[theta_index])
+            {
           // intensity can be anything, range is whatever rho says
           constructed_intensities_[theta_index] = 100.0;
           constructed_ranges_[theta_index] = rho;
