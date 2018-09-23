@@ -400,6 +400,10 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
   latest_odom_msg_ = *odom_msg;
   if (!received_odom_)
   {
+    if (!getBaseToFootprintTf(odom_msg->child_frame_id)) {
+      ROS_WARN("skipping dom");
+      return;
+    }
     reference_odom_msg_ = *odom_msg;
     received_odom_ = true;
   }
@@ -443,7 +447,8 @@ void LaserScanMatcher::constructScan(void)
                         reference_odom_tf);
     tf::Transform delta_odom_tf = reference_odom_tf.inverse() * latest_odom_tf;
     // apply calculated delta to the reference pose
-    tf::Transform predicted_pose = initial_pose_ * delta_odom_tf;
+    tf::Transform predicted_pose =
+      initial_pose_ * base_to_footprint_ * delta_odom_tf * footprint_to_base_;
     predicted_pose_in_pcl = pcl2f_ * predicted_pose;
   } else {
     predicted_pose_in_pcl = pcl2f_ * initial_pose_;
@@ -1053,6 +1058,29 @@ bool LaserScanMatcher::getBaseToLaserTf (const std::string& frame_id)
   }
   base_to_laser_ = base_to_laser_tf;
   laser_to_base_ = base_to_laser_.inverse();
+
+  return true;
+}
+
+bool LaserScanMatcher::getBaseToFootprintTf (const std::string& frame_id)
+{
+  ros::Time t = ros::Time::now();
+
+  tf::StampedTransform footprint_to_base_tf;
+  try
+  {
+    tf_listener_.waitForTransform(
+      frame_id, base_frame_, t, ros::Duration(1.0));
+    tf_listener_.lookupTransform (
+      frame_id, base_frame_, t, footprint_to_base_tf);
+  }
+  catch (tf::TransformException ex)
+  {
+    ROS_WARN("Could not get initial transform from footprint to base frame, %s", ex.what());
+    return false;
+  }
+  footprint_to_base_ = footprint_to_base_tf;
+  base_to_footprint_ = footprint_to_base_.inverse();
 
   return true;
 }

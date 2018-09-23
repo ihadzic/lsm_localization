@@ -85,6 +85,9 @@ class LaserScanMatcher
 
     tf::Transform base_to_laser_; // static, cached
     tf::Transform laser_to_base_; // static, cached, calculated from base_to_laser_
+    tf::Transform base_to_footprint_;
+    tf::Transform footprint_to_base_;
+
 
     ros::Publisher  pose_publisher_;
     ros::Publisher  pose_stamped_publisher_;
@@ -188,7 +191,7 @@ class LaserScanMatcher
     int processScan(LDP& curr_ldp_scan, const ros::Time& time);
     int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
     void doPublish(const ros::Time& time);
-    
+
     void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
                               LDP& ldp);
     void constructedScanToLDP(LDP& ldp);
@@ -204,6 +207,7 @@ class LaserScanMatcher
     void velCallback (const geometry_msgs::Twist::ConstPtr& twist_msg);
     void velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg);
     bool getBaseToLaserTf (const std::string& frame_id);
+    bool getBaseToFootprintTf (const std::string& frame_id);
 
     bool newKeyframeNeeded(const tf::Transform& d);
 
