@@ -150,9 +150,6 @@ class LaserScanMatcher
     std::vector<std::vector<int> > map_grid_;
     int map_width_;
     int map_height_;
-    double predicted_pose_in_pcl_x_;
-    double predicted_pose_in_pcl_y_;
-    double predicted_pose_in_pcl_yaw_;
     double observed_range_min_;
     double observed_range_max_;
     double observed_angle_min_;
@@ -162,6 +159,7 @@ class LaserScanMatcher
     double observed_time_inc_;
     std::string observed_scan_frame_;
 
+    tf::Transform predicted_pose_in_pcl_;
     tf::Transform initial_pose_;
     tf::Transform f2pcl_;  // fixed-to-point-cloud-local tf
     tf::Transform pcl2f_;  // (and its inverse)

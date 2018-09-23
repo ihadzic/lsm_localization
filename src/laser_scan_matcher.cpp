@@ -150,9 +150,7 @@ void LaserScanMatcher::resetState()
   constructed_ranges_.clear();
   initialpose_valid_ = false;
   initial_pose_.setIdentity();
-  predicted_pose_in_pcl_x_ = 0.0;
-  predicted_pose_in_pcl_y_ = 0.0;
-  predicted_pose_in_pcl_yaw_ = 0.0;
+  predicted_pose_in_pcl_.setIdentity();
 
   f2b_.setIdentity();
   f2b_kf_.setIdentity();
@@ -433,7 +431,6 @@ void LaserScanMatcher::constructScan(void)
   double angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
   double angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
 
-  tf::Transform predicted_pose_in_pcl;
   if (use_odom_) {
     tf::Transform latest_odom_tf;
     tf::Transform reference_odom_tf;
@@ -449,13 +446,13 @@ void LaserScanMatcher::constructScan(void)
     // apply calculated delta to the reference pose
     tf::Transform predicted_pose =
       initial_pose_ * base_to_footprint_ * delta_odom_tf * footprint_to_base_;
-    predicted_pose_in_pcl = pcl2f_ * predicted_pose;
+    predicted_pose_in_pcl_ = pcl2f_ * predicted_pose;
   } else {
-    predicted_pose_in_pcl = pcl2f_ * initial_pose_;
+    predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
   }
-  predicted_pose_in_pcl_x_ = predicted_pose_in_pcl.getOrigin().getX();
-  predicted_pose_in_pcl_y_ = predicted_pose_in_pcl.getOrigin().getY();
-  predicted_pose_in_pcl_yaw_ = tf::getYaw(predicted_pose_in_pcl.getRotation());
+  double predicted_pose_in_pcl_x = predicted_pose_in_pcl_.getOrigin().getX();
+  double predicted_pose_in_pcl_y = predicted_pose_in_pcl_.getOrigin().getY();
+  double predicted_pose_in_pcl_yaw = tf::getYaw(predicted_pose_in_pcl_.getRotation());
   ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
             range_min, range_max, angle_min, angle_max, angle_inc);
   ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
@@ -465,9 +462,9 @@ void LaserScanMatcher::constructScan(void)
   // indices into the map for the region of interest
   // x0, y0: lower-left corner index
   // w, h  : width and height in indices
-  int x0 = (int)((predicted_pose_in_pcl_x_ - range_max) / map_res_);
+  int x0 = (int)((predicted_pose_in_pcl_x - range_max) / map_res_);
   if (x0 < 0) x0 = 0;
-  int y0 = (int)((predicted_pose_in_pcl_y_ - range_max) / map_res_);
+  int y0 = (int)((predicted_pose_in_pcl_y - range_max) / map_res_);
   if (y0 < 0) y0 = 0;
   int w = 2 * (int)(range_max / map_res_);
   int h = w;
@@ -491,14 +488,14 @@ void LaserScanMatcher::constructScan(void)
   for (int y = y0; y < y0 + h; y++) {
     for (int x = x0; x < x0 + w; x++) {
       if (map_grid_[y][x] > map_occupancy_threshold_) {
-        double delta_x = x * map_res_ - predicted_pose_in_pcl_x_;
-        double delta_y = y * map_res_ - predicted_pose_in_pcl_y_;
+        double delta_x = x * map_res_ - predicted_pose_in_pcl_x;
+        double delta_y = y * map_res_ - predicted_pose_in_pcl_y;
         double rho = sqrt(delta_x * delta_x + delta_y * delta_y);
         // go to polar cordinates relative to the scanner heading
         // REVISIT: we are missing base_link to base_scan transform!
         //          so this only works if x-axis of the LIDAR frame
         //          is aligned with x-asix of the robot base frame
-        double theta = atan2(delta_y, delta_x) - predicted_pose_in_pcl_yaw_;
+        double theta = atan2(delta_y, delta_x) - predicted_pose_in_pcl_yaw;
         // ensure that theta is in -pi to + pi (nominal range)
         while (theta < -M_PI) theta += 2 * M_PI;
         while (theta >= M_PI) theta -= 2 * M_PI;
@@ -576,10 +573,7 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   // new initial pose came in, set the predicted pose to be equal
   // to it and set the reference odom to be the current odom
   initial_pose_ = pose;
-  tf::Transform initial_pose_in_pcl = pcl2f_ * initial_pose_;
-  predicted_pose_in_pcl_x_ = initial_pose_in_pcl.getOrigin().getX();
-  predicted_pose_in_pcl_y_ = initial_pose_in_pcl.getOrigin().getY();
-  predicted_pose_in_pcl_yaw_ = tf::getYaw(initial_pose_in_pcl.getRotation());
+  predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
   initialpose_valid_ = true;
   // reflect the incoming initial pose if set up to publish
   // on compatible topic
@@ -660,10 +654,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
         // if localization was successful, use the estimated pose
         // as the reference for next time
         initial_pose_ = f2b_;
-        tf::Transform initial_pose_in_pcl = pcl2f_ * initial_pose_;
-        predicted_pose_in_pcl_x_ = initial_pose_in_pcl.getOrigin().getX();
-        predicted_pose_in_pcl_y_ = initial_pose_in_pcl.getOrigin().getY();
-        predicted_pose_in_pcl_yaw_ = tf::getYaw(initial_pose_in_pcl.getRotation());
+        predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
         initialpose_valid_ = true;
         reference_odom_msg_ = latest_odom_msg_;
       }
@@ -826,12 +817,10 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
                  gsl_matrix_get(output_.cov_x_m, 0, 0),
                  gsl_matrix_get(output_.cov_x_m, 1, 1),
                  gsl_matrix_get(output_.cov_x_m, 2, 2));
-      tf::Transform ref2scan, pcl2ref;
+      tf::Transform ref2scan;
       createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
                           ref2scan);
-      createTfFromXYTheta(predicted_pose_in_pcl_x_, predicted_pose_in_pcl_y_,
-                          predicted_pose_in_pcl_yaw_, pcl2ref);
-      f2b_ = f2pcl_ * pcl2ref * ref2scan * laser_to_base_;
+      f2b_ = f2pcl_ * predicted_pose_in_pcl_ * ref2scan * laser_to_base_;
       doPublish(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
       ROS_INFO("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
