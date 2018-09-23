@@ -450,9 +450,10 @@ void LaserScanMatcher::constructScan(void)
   } else {
     predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
   }
-  double predicted_pose_in_pcl_x = predicted_pose_in_pcl_.getOrigin().getX();
-  double predicted_pose_in_pcl_y = predicted_pose_in_pcl_.getOrigin().getY();
-  double predicted_pose_in_pcl_yaw = tf::getYaw(predicted_pose_in_pcl_.getRotation());
+  tf::Transform predicted_laser_pose_in_pcl = predicted_pose_in_pcl_ * base_to_laser_;
+  double laser_x = predicted_laser_pose_in_pcl.getOrigin().getX();
+  double laser_y = predicted_laser_pose_in_pcl.getOrigin().getY();
+  double laser_yaw = tf::getYaw(predicted_laser_pose_in_pcl.getRotation());
   ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
             range_min, range_max, angle_min, angle_max, angle_inc);
   ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
@@ -462,9 +463,9 @@ void LaserScanMatcher::constructScan(void)
   // indices into the map for the region of interest
   // x0, y0: lower-left corner index
   // w, h  : width and height in indices
-  int x0 = (int)((predicted_pose_in_pcl_x - range_max) / map_res_);
+  int x0 = (int)((laser_x - range_max) / map_res_);
   if (x0 < 0) x0 = 0;
-  int y0 = (int)((predicted_pose_in_pcl_y - range_max) / map_res_);
+  int y0 = (int)((laser_y - range_max) / map_res_);
   if (y0 < 0) y0 = 0;
   int w = 2 * (int)(range_max / map_res_);
   int h = w;
@@ -488,14 +489,11 @@ void LaserScanMatcher::constructScan(void)
   for (int y = y0; y < y0 + h; y++) {
     for (int x = x0; x < x0 + w; x++) {
       if (map_grid_[y][x] > map_occupancy_threshold_) {
-        double delta_x = x * map_res_ - predicted_pose_in_pcl_x;
-        double delta_y = y * map_res_ - predicted_pose_in_pcl_y;
+        double delta_x = x * map_res_ - laser_x;
+        double delta_y = y * map_res_ - laser_y;
         double rho = sqrt(delta_x * delta_x + delta_y * delta_y);
         // go to polar cordinates relative to the scanner heading
-        // REVISIT: we are missing base_link to base_scan transform!
-        //          so this only works if x-axis of the LIDAR frame
-        //          is aligned with x-asix of the robot base frame
-        double theta = atan2(delta_y, delta_x) - predicted_pose_in_pcl_yaw;
+        double theta = atan2(delta_y, delta_x) - laser_yaw;
         // ensure that theta is in -pi to + pi (nominal range)
         while (theta < -M_PI) theta += 2 * M_PI;
         while (theta >= M_PI) theta -= 2 * M_PI;
@@ -817,10 +815,14 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
                  gsl_matrix_get(output_.cov_x_m, 0, 0),
                  gsl_matrix_get(output_.cov_x_m, 1, 1),
                  gsl_matrix_get(output_.cov_x_m, 2, 2));
-      tf::Transform ref2scan;
-      createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
-                          ref2scan);
-      f2b_ = f2pcl_ * predicted_pose_in_pcl_ * ref2scan * laser_to_base_;
+      tf::Transform pose_delta;
+      createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], pose_delta);
+      // predicted pose is pcl-to-base_link
+      // delta is crrection of predicted pose, right two
+      // operands get us corrected pcl-to-base_link
+      // multiply by map-to-pcl on the left to get
+      // map-to-base_link, which is the pose we are looking for
+      f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
       doPublish(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
       ROS_INFO("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
