@@ -434,6 +434,12 @@ void LaserScanMatcher::constructScan(void)
   if (use_odom_) {
     tf::Transform latest_odom_tf;
     tf::Transform reference_odom_tf;
+    ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
+              reference_odom_msg_.pose.pose.position.x,
+              reference_odom_msg_.pose.pose.position.y);
+    ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
+              latest_odom_msg_.pose.pose.position.x,
+              latest_odom_msg_.pose.pose.position.y);
     createTfFromXYTheta(latest_odom_msg_.pose.pose.position.x,
                         latest_odom_msg_.pose.pose.position.y,
                         tf::getYaw(latest_odom_msg_.pose.pose.orientation),
@@ -454,12 +460,10 @@ void LaserScanMatcher::constructScan(void)
   double laser_x = predicted_laser_pose_in_pcl.getOrigin().getX();
   double laser_y = predicted_laser_pose_in_pcl.getOrigin().getY();
   double laser_yaw = tf::getYaw(predicted_laser_pose_in_pcl.getRotation());
+  ROS_DEBUG("%s: laser_x=%f, laser_y=%f laser_yaw (deg)=%f", __func__,
+            laser_x, laser_y, 180.0 * laser_yaw / M_PI);
   ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
             range_min, range_max, angle_min, angle_max, angle_inc);
-  ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
-            reference_odom_msg_.pose.pose.position.x, reference_odom_msg_.pose.pose.position.y);
-  ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
-            latest_odom_msg_.pose.pose.position.x, latest_odom_msg_.pose.pose.position.y);
   // indices into the map for the region of interest
   // x0, y0: lower-left corner index
   // w, h  : width and height in indices
