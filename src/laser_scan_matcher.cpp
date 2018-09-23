@@ -149,10 +149,7 @@ void LaserScanMatcher::resetState()
   constructed_intensities_.clear();
   constructed_ranges_.clear();
   initialpose_valid_ = false;
-
-  initial_pose_in_pcl_x_ = 0.0;
-  initial_pose_in_pcl_y_ = 0.0;
-  initial_pose_in_pcl_yaw_ = 0.0;
+  initial_pose_.setIdentity();
   predicted_pose_in_pcl_x_ = 0.0;
   predicted_pose_in_pcl_y_ = 0.0;
   predicted_pose_in_pcl_yaw_ = 0.0;
@@ -432,31 +429,34 @@ void LaserScanMatcher::constructScan(void)
   double angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
   double angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
 
+  tf::Transform predicted_pose_in_pcl;
   if (use_odom_) {
-    // calculate how much has odom changed relative to the reference
-    double odom_delta_x = latest_odom_msg_.pose.pose.position.x -
-      reference_odom_msg_.pose.pose.position.x;
-    double odom_delta_y = latest_odom_msg_.pose.pose.position.y -
-      reference_odom_msg_.pose.pose.position.y;
-    double odom_delta_yaw = tf::getYaw(latest_odom_msg_.pose.pose.orientation) -
-      tf::getYaw(reference_odom_msg_.pose.pose.orientation);
-    if      (odom_delta_yaw >= M_PI) odom_delta_yaw -= 2.0 * M_PI;
-    else if (odom_delta_yaw < -M_PI) odom_delta_yaw += 2.0 * M_PI;
+    tf::Transform latest_odom_tf;
+    tf::Transform reference_odom_tf;
+    createTfFromXYTheta(latest_odom_msg_.pose.pose.position.x,
+                        latest_odom_msg_.pose.pose.position.y,
+                        tf::getYaw(latest_odom_msg_.pose.pose.orientation),
+                        latest_odom_tf);
+    createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
+                        reference_odom_msg_.pose.pose.position.y,
+                        tf::getYaw(reference_odom_msg_.pose.pose.orientation),
+                        reference_odom_tf);
+    tf::Transform delta_odom_tf = reference_odom_tf.inverse() * latest_odom_tf;
     // apply calculated delta to the reference pose
-    predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_ + odom_delta_x;
-    predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_ + odom_delta_y;
-    predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_ + odom_delta_yaw;
-    while (predicted_pose_in_pcl_yaw_ >= M_PI) predicted_pose_in_pcl_yaw_ -= 2.0 * M_PI;
-    while (predicted_pose_in_pcl_yaw_ < -M_PI) predicted_pose_in_pcl_yaw_ += 2.0 * M_PI;
-    ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
-              reference_odom_msg_.pose.pose.position.x, reference_odom_msg_.pose.pose.position.y);
-    ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
-              latest_odom_msg_.pose.pose.position.x, latest_odom_msg_.pose.pose.position.y);
-    ROS_DEBUG("%s: delta_odom=(%f, %f)@%f", __func__,
-              odom_delta_x, odom_delta_y, 180.0 * odom_delta_yaw / M_PI);
+    tf::Transform predicted_pose = initial_pose_ * delta_odom_tf;
+    predicted_pose_in_pcl = pcl2f_ * predicted_pose;
+  } else {
+    predicted_pose_in_pcl = pcl2f_ * initial_pose_;
   }
+  predicted_pose_in_pcl_x_ = predicted_pose_in_pcl.getOrigin().getX();
+  predicted_pose_in_pcl_y_ = predicted_pose_in_pcl.getOrigin().getY();
+  predicted_pose_in_pcl_yaw_ = tf::getYaw(predicted_pose_in_pcl.getRotation());
   ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
             range_min, range_max, angle_min, angle_max, angle_inc);
+  ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
+            reference_odom_msg_.pose.pose.position.x, reference_odom_msg_.pose.pose.position.y);
+  ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
+            latest_odom_msg_.pose.pose.position.x, latest_odom_msg_.pose.pose.position.y);
   // indices into the map for the region of interest
   // x0, y0: lower-left corner index
   // w, h  : width and height in indices
@@ -568,13 +568,13 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     ROS_WARN("incorrect frame for initial pose: '%s' vs. '%s'",
              pose_msg->header.frame_id.c_str(), fixed_frame_.c_str());
 
-  tf::Transform pose_in_pcl = pcl2f_ * pose;
-  initial_pose_in_pcl_x_ = pose_in_pcl.getOrigin().getX();
-  initial_pose_in_pcl_y_ = pose_in_pcl.getOrigin().getY();
-  initial_pose_in_pcl_yaw_ = tf::getYaw(pose_in_pcl.getRotation());
-  predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_;
-  predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_;
-  predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
+  // new initial pose came in, set the predicted pose to be equal
+  // to it and set the reference odom to be the current odom
+  initial_pose_ = pose;
+  tf::Transform initial_pose_in_pcl = pcl2f_ * initial_pose_;
+  predicted_pose_in_pcl_x_ = initial_pose_in_pcl.getOrigin().getX();
+  predicted_pose_in_pcl_y_ = initial_pose_in_pcl.getOrigin().getY();
+  predicted_pose_in_pcl_yaw_ = tf::getYaw(initial_pose_in_pcl.getRotation());
   initialpose_valid_ = true;
   // reflect the incoming initial pose if set up to publish
   // on compatible topic
@@ -654,13 +654,12 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
       if (r) {
         // if localization was successful, use the estimated pose
         // as the reference for next time
-        tf::Transform pose_in_pcl = pcl2f_ * f2b_;
-        initial_pose_in_pcl_x_ = pose_in_pcl.getOrigin().getX();
-        initial_pose_in_pcl_y_ = pose_in_pcl.getOrigin().getY();
-        initial_pose_in_pcl_yaw_ = tf::getYaw(pose_in_pcl.getRotation());
-        predicted_pose_in_pcl_x_ = initial_pose_in_pcl_x_;
-        predicted_pose_in_pcl_y_ = initial_pose_in_pcl_y_;
-        predicted_pose_in_pcl_yaw_ = initial_pose_in_pcl_yaw_;
+        initial_pose_ = f2b_;
+        tf::Transform initial_pose_in_pcl = pcl2f_ * initial_pose_;
+        predicted_pose_in_pcl_x_ = initial_pose_in_pcl.getOrigin().getX();
+        predicted_pose_in_pcl_y_ = initial_pose_in_pcl.getOrigin().getY();
+        predicted_pose_in_pcl_yaw_ = tf::getYaw(initial_pose_in_pcl.getRotation());
+        initialpose_valid_ = true;
         reference_odom_msg_ = latest_odom_msg_;
       }
     } else
