@@ -423,6 +423,21 @@ void LaserScanMatcher::velStmpCallback(const geometry_msgs::TwistStamped::ConstP
   received_vel_ = true;
 }
 
+void LaserScanMatcher::beamAddIncidentAngle(double dx, double dy, double laser_yaw, std::vector<double>& angles)
+{
+  double theta = atan2(dy, dx) - laser_yaw;
+  double angle_max = (initialized_) ? observed_angle_max_ : default_angle_max_;
+  double angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
+  // ensure that theta is in -pi to pi range
+  while (theta < -M_PI) theta += 2 * M_PI;
+  while (theta >= M_PI) theta -= 2 * M_PI;
+  // if LIDAR range uses only positive angles, make the angle compatible with it
+  if (angle_min >= 0 && theta < 0.0) theta += 2 * M_PI;
+  if (theta < angle_min) return;
+  if (theta > angle_max) return;
+  angles.push_back(theta);
+}
+
 void LaserScanMatcher::constructScan(void)
 {
   double range_max = (initialized_) ? observed_range_max_ : default_range_max_;
@@ -493,30 +508,49 @@ void LaserScanMatcher::constructScan(void)
   for (int y = y0; y < y0 + h; y++) {
     for (int x = x0; x < x0 + w; x++) {
       if (map_grid_[y][x] > map_occupancy_threshold_) {
-        double delta_x = x * map_res_ - laser_x;
-        double delta_y = y * map_res_ - laser_y;
+        // add .5 to reference the middle of the pixel
+        double delta_x = (x + .5) * map_res_ - laser_x;
+        double delta_y = (y + .5) * map_res_ - laser_y;
         double rho = sqrt(delta_x * delta_x + delta_y * delta_y);
-        // go to polar cordinates relative to the scanner heading
-        double theta = atan2(delta_y, delta_x) - laser_yaw;
-        // ensure that theta is in -pi to + pi (nominal range)
-        while (theta < -M_PI) theta += 2 * M_PI;
-        while (theta >= M_PI) theta -= 2 * M_PI;
-        // if we are out of lower range try adding 2pi to
-        // handles LIDARs whose angle_min goes from 0 to 2 * pi
-        if (theta < angle_min) theta = 2 * M_PI + theta;
-        if (theta > angle_max) continue;
+        // is pixel in range at all?
         if (rho < range_min) continue;
         if (rho > range_max) continue;
-        int theta_index = (int)((theta - angle_min) / angle_inc) % num_angles;
-        // either no point ever recorded for this angle, so take it
-        // or the current point is closer than previously recorded point
-        if ((constructed_intensities_[theta_index] == 0.0 &&
-              constructed_ranges_[theta_index] == 0.0) ||
-            rho < constructed_ranges_[theta_index])
-            {
-          // intensity can be anything, range is whatever rho says
-          constructed_intensities_[theta_index] = 100.0;
-          constructed_ranges_[theta_index] = rho;
+        // go to polar cordinates relative to the scanner heading
+        // calculate incident angles for all four corners of the pixel
+        std::vector<double> incident_angles;
+        beamAddIncidentAngle(delta_x - .5 * map_res_, delta_y - .5 * map_res_,
+                             laser_yaw, incident_angles);
+        beamAddIncidentAngle(delta_x + .5 * map_res_, delta_y - .5 * map_res_,
+                             laser_yaw, incident_angles);
+        beamAddIncidentAngle(delta_x - .5 * map_res_, delta_y + .5 * map_res_,
+                             laser_yaw, incident_angles);
+        beamAddIncidentAngle(delta_x + .5 * map_res_, delta_y + .5 * map_res_,
+                             laser_yaw, incident_angles);
+        if (incident_angles.empty()) continue;
+        double min_theta = *std::min_element(incident_angles.begin(),
+                                             incident_angles.end());
+        double max_theta = *std::max_element(incident_angles.begin(),
+                                             incident_angles.end());
+        // calculate view angle with under which this pixel is visible
+        double delta_theta = max_theta - min_theta;
+        double start_theta = min_theta;
+        // handle wrap-around the circle
+        if (delta_theta > M_PI) {
+          start_theta = max_theta;
+          delta_theta = 2 * M_PI - delta_theta;
+        }
+        int theta_index = (int)((start_theta - angle_min) / angle_inc) % num_angles;
+        for (int i = 0; i <= (int)(delta_theta / angle_inc); i++) {
+          // either no point ever recorded for this angle, so take it
+          // or the current point is closer than previously recorded point
+          if ((constructed_intensities_[theta_index] == 0.0 &&
+               constructed_ranges_[theta_index] == 0.0) ||
+              rho < constructed_ranges_[theta_index]) {
+            // intensity can be anything, range is whatever rho says
+            constructed_intensities_[theta_index] = 100.0;
+            constructed_ranges_[theta_index] = rho;
+          }
+          theta_index = (theta_index + 1) % num_angles;
         }
       }
     }
