@@ -864,11 +864,18 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       doPublish(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
       ROS_INFO("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
+      ld_free(curr_ldp_scan);
+      ld_free(ref_ldp_scan);
       return 1;
-    } else
+    } else {
+      ld_free(curr_ldp_scan);
+      ld_free(ref_ldp_scan);
       return 0;
+    }
   } else {
     ROS_WARN("Error in scan matching");
+    ld_free(curr_ldp_scan);
+    ld_free(ref_ldp_scan);
     return 0;
   }
 }
