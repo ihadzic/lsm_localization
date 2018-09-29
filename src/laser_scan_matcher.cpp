@@ -517,6 +517,7 @@ void LaserScanMatcher::constructScan(void)
         // is pixel in range at all?
         if (rho < range_min) continue;
         if (rho > range_max) continue;
+        if (max_allowed_range_ > 0 && rho > max_allowed_range_) continue;
         // go to polar cordinates relative to the scanner heading
         // calculate incident angles for all four corners of the pixel
         std::vector<double> incident_angles;
@@ -1021,7 +1022,8 @@ void LaserScanMatcher::laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& sc
 
     double r = scan_msg->ranges[i];
 
-    if (r > scan_msg->range_min && r < scan_msg->range_max)
+    if (r > scan_msg->range_min && r < scan_msg->range_max &&
+        (max_allowed_range_ <= 0 || r <= max_allowed_range_))
     {
       // fill in laser scan data
 
