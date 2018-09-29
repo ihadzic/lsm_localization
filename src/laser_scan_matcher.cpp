@@ -208,6 +208,8 @@ void LaserScanMatcher::initParams()
     map_occupancy_threshold_ = 10.0;
   // min and max range for constructing the scan that initial pose
   // would see
+  if (!nh_private_.getParam("max_allowed_range", max_allowed_range_))
+    max_allowed_range_ = -1;
   if (!nh_private_.getParam ("default_range_min", default_range_min_))
     default_range_min_ = 0.5;
   if (!nh_private_.getParam ("default_range_max", default_range_min_))
