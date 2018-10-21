@@ -101,6 +101,7 @@ class LaserScanMatcher
     std::string fixed_frame_;
     std::string default_scan_frame_;
     std::string initialpose_topic_;
+    int scan_downsample_rate_;
     double max_variance_trans_;
     double max_variance_rot_;
     double max_allowed_range_;

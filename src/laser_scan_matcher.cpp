@@ -176,6 +176,11 @@ void LaserScanMatcher::initParams()
   if (!nh_private_.getParam ("initialpose_topic_name", initialpose_topic_))
     initialpose_topic_ = "initialpose";
 
+  if (!nh_private_.getParam("scan_downsample_rate", scan_downsample_rate_))
+    scan_downsample_rate_ = 1;
+  if (scan_downsample_rate_ <= 0)
+    scan_downsample_rate_ = 1;
+
   // **** keyframe params: when to generate the keyframe scan
   // if either is set to 0, reduces to frame-to-frame matching
 
@@ -678,6 +683,8 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     initialized_ = true;
   }
 
+  if (scan_msg->header.seq % scan_downsample_rate_ != 0)
+    return;
   ros::WallTime start = ros::WallTime::now();
   LDP curr_ldp_scan;
   int r = 0;
