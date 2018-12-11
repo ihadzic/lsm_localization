@@ -863,13 +863,16 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
                  gsl_matrix_get(output_.cov_x_m, 0, 0),
                  gsl_matrix_get(output_.cov_x_m, 1, 1),
                  gsl_matrix_get(output_.cov_x_m, 2, 2));
+      tf::Transform pose_delta_laser;
       tf::Transform pose_delta;
-      createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], pose_delta);
+      createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
+                          pose_delta_laser);
       // predicted pose is pcl-to-base_link
       // delta is crrection of predicted pose, right two
       // operands get us corrected pcl-to-base_link
       // multiply by map-to-pcl on the left to get
       // map-to-base_link, which is the pose we are looking for
+      pose_delta = base_to_laser_ * pose_delta_laser * laser_to_base_;
       f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
       doPublish(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
