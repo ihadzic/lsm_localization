@@ -400,11 +400,39 @@ void LaserScanMatcher::imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg)
   }
 }
 
+nav_msgs::Odometry* LaserScanMatcher::latestOdomBefore(const ros::Time& time)
+{
+    for (auto o=odom_history_.begin(); o < odom_history_.end(); o++) {
+        if (o->header.stamp <= time)
+            return &(*o);
+    }
+    return NULL;
+}
+
+nav_msgs::Odometry* LaserScanMatcher::earliestOdomAfter(const ros::Time& time)
+{
+    for (auto o=odom_history_.begin(); o < odom_history_.end(); o++) {
+        if (o->header.stamp == time) {
+            // found exact match, that's it!
+            return &(*o);
+        } else if (o->header.stamp < time) {
+            if (o==odom_history_.begin()) {
+                // beginning of queue is already before (i.e. nothing after)
+                return NULL;
+            } else {
+                // found latest before, so earliest after is one before that
+                return &(*(o-1));
+            }
+        }
+    }
+    return &(*odom_history_.end());
+}
+
 void LaserScanMatcher::addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o)
 {
     if (odom_history_.size() >= MAX_ODOM_HISTORY)
-        odom_history_.pop_front();
-    odom_history_.push_back(*o);
+        odom_history_.pop_back();
+    odom_history_.push_front(*o);
 }
 
 void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
@@ -454,7 +482,7 @@ void LaserScanMatcher::beamAddIncidentAngle(double dx, double dy, double laser_y
   angles.push_back(theta);
 }
 
-void LaserScanMatcher::constructScan(const ros::Time& timestamp)
+void LaserScanMatcher::constructScan(const ros::Time& time)
 {
   double range_max = (initialized_) ? observed_range_max_ : default_range_max_;
   double range_min = (initialized_) ? observed_range_min_ : default_range_min_;
@@ -465,6 +493,8 @@ void LaserScanMatcher::constructScan(const ros::Time& timestamp)
   if (use_odom_) {
     tf::Transform latest_odom_tf;
     tf::Transform reference_odom_tf;
+    nav_msgs::Odometry* oea = earliestOdomAfter(time);
+    nav_msgs::Odometry* olb = latestOdomBefore(time);
     ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
               reference_odom_msg_.pose.pose.position.x,
               reference_odom_msg_.pose.pose.position.y);
@@ -582,7 +612,7 @@ void LaserScanMatcher::constructScan(const ros::Time& timestamp)
     scan_msg->angle_increment = angle_inc;
     scan_msg->scan_time = (initialized_) ? observed_scan_time_ : default_scan_time_;
     scan_msg->time_increment = (initialized_) ? observed_time_inc_ : default_time_inc_;
-    scan_msg->header.stamp = timestamp;
+    scan_msg->header.stamp = time;
     scan_msg->header.frame_id = (initialized_) ?  observed_scan_frame_ : default_scan_frame_;
     scan_msg->ranges.resize(num_angles);
     scan_msg->intensities.resize(num_angles);
