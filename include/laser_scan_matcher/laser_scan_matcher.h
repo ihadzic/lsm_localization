@@ -57,6 +57,8 @@
 #undef min
 #undef max
 
+#define MAX_ODOM_HISTORY 1024
+
 namespace scan_tools
 {
 
@@ -179,6 +181,7 @@ class LaserScanMatcher
 
     std::vector<double> constructed_intensities_;
     std::vector<double> constructed_ranges_;
+    std::deque<nav_msgs::Odometry> odom_history_;
 
     sm_params input_;
     sm_result output_;
@@ -188,6 +191,7 @@ class LaserScanMatcher
 
     void initParams();
     void resetState();
+    void addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o);
     int processScan(LDP& curr_ldp_scan, const ros::Time& time);
     int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
     void doPublish(const ros::Time& time);

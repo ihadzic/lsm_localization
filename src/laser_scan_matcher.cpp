@@ -65,6 +65,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   resetState();
   pcl2f_.setIdentity();
   f2pcl_.setIdentity();
+  odom_history_.resize(MAX_ODOM_HISTORY);
 
   // **** publishers
   if (publish_constructed_scan_ && use_map_)
@@ -399,10 +400,18 @@ void LaserScanMatcher::imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg)
   }
 }
 
+void LaserScanMatcher::addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o)
+{
+    if (odom_history_.size() >= MAX_ODOM_HISTORY)
+        odom_history_.pop_front();
+    odom_history_.push_back(*o);
+}
+
 void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
   boost::mutex::scoped_lock(mutex_);
   latest_odom_msg_ = *odom_msg;
+  addOdomToHistory(odom_msg);
   if (!received_odom_)
   {
     if (!getBaseToFootprintTf(odom_msg->child_frame_id)) {
