@@ -197,7 +197,7 @@ class LaserScanMatcher
     void constructedScanToLDP(LDP& ldp);
     void beamAddIncidentAngle(double dx, double dy, double laser_yaw,
                               std::vector<double>& angles);
-    void constructScan(void);
+    void constructScan(const ros::Time& timestamp);
 
     void mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map_msg);
 

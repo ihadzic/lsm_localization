@@ -445,7 +445,7 @@ void LaserScanMatcher::beamAddIncidentAngle(double dx, double dy, double laser_y
   angles.push_back(theta);
 }
 
-void LaserScanMatcher::constructScan(void)
+void LaserScanMatcher::constructScan(const ros::Time& timestamp)
 {
   double range_max = (initialized_) ? observed_range_max_ : default_range_max_;
   double range_min = (initialized_) ? observed_range_min_ : default_range_min_;
@@ -573,7 +573,7 @@ void LaserScanMatcher::constructScan(void)
     scan_msg->angle_increment = angle_inc;
     scan_msg->scan_time = (initialized_) ? observed_scan_time_ : default_scan_time_;
     scan_msg->time_increment = (initialized_) ? observed_time_inc_ : default_time_inc_;
-    scan_msg->header.stamp = ros::Time::now();
+    scan_msg->header.stamp = timestamp;
     scan_msg->header.frame_id = (initialized_) ?  observed_scan_frame_ : default_scan_frame_;
     scan_msg->ranges.resize(num_angles);
     scan_msg->intensities.resize(num_angles);
@@ -692,7 +692,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
       LDP ref_pose_ldp_scan;
-      constructScan();
+      constructScan(scan_msg->header.stamp);
       constructedScanToLDP(ref_pose_ldp_scan);
       laserScanToLDP(scan_msg, curr_ldp_scan);
       r = processScan(curr_ldp_scan, ref_pose_ldp_scan, scan_msg->header.stamp);
