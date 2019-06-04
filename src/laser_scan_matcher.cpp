@@ -491,7 +491,7 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
   double angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
 
   if (use_odom_) {
-    tf::Transform latest_odom_tf;
+    tf::Transform current_odom_tf;
     tf::Transform reference_odom_tf;
     nav_msgs::Odometry* oea = earliestOdomAfter(time);
     nav_msgs::Odometry* olb = latestOdomBefore(time);
@@ -504,12 +504,12 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
     createTfFromXYTheta(latest_odom_msg_.pose.pose.position.x,
                         latest_odom_msg_.pose.pose.position.y,
                         tf::getYaw(latest_odom_msg_.pose.pose.orientation),
-                        latest_odom_tf);
+                        current_odom_tf);
     createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
                         reference_odom_msg_.pose.pose.position.y,
                         tf::getYaw(reference_odom_msg_.pose.pose.orientation),
                         reference_odom_tf);
-    tf::Transform delta_odom_tf = reference_odom_tf.inverse() * latest_odom_tf;
+    tf::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
     // apply calculated delta to the reference pose
     tf::Transform predicted_pose =
       initial_pose_ * base_to_footprint_ * delta_odom_tf * footprint_to_base_;
