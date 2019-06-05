@@ -176,6 +176,7 @@ class LaserScanMatcher
     sensor_msgs::Imu latest_imu_msg_;
     sensor_msgs::Imu reference_imu_msg_;
     nav_msgs::Odometry latest_odom_msg_;
+    nav_msgs::Odometry current_odom_msg_;
     nav_msgs::Odometry reference_odom_msg_;
     geometry_msgs::Twist latest_vel_msg_;
 
@@ -191,6 +192,7 @@ class LaserScanMatcher
 
     void initParams();
     void resetState();
+    bool interpolateOdom(const ros::Time& time);
     void addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o);
     nav_msgs::Odometry* earliestOdomAfter(const ros::Time& time);
     nav_msgs::Odometry* latestOdomBefore(const ros::Time& time);

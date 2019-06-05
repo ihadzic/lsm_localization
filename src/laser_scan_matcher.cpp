@@ -435,6 +435,69 @@ void LaserScanMatcher::addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o)
     odom_history_.push_front(*o);
 }
 
+bool LaserScanMatcher::interpolateOdom(const ros::Time& time)
+{
+    nav_msgs::Odometry* latest_before = latestOdomBefore(time);
+    if (!latest_before) {
+        ROS_WARN("missing latest odom before t=%.3f (is odom topic alive)",
+                 time.toSec());
+        return false;
+    }
+    nav_msgs::Odometry* earliest_after = earliestOdomAfter(time);
+    nav_msgs::Odometry o = *latest_before;
+    // REVISIT: we steal the covariance from the latest_before message
+    //          to do this right we have to interpolate or extrapolate
+    //          the covariance too
+    o.header.stamp = time;
+    tf::Quaternion q;
+    if (earliest_after) {
+        ROS_INFO("Interpolating");
+        double T = (earliest_after->header.stamp - latest_before->header.stamp).toSec();
+        double wb = (earliest_after->header.stamp - time).toSec() / T;
+        double wa = 1.0 - wb;
+        // we have both odom points surrounding the current time, interpolate
+        o.pose.pose.position.x = wa * earliest_after->pose.pose.position.x +
+            wb * latest_before->pose.pose.position.x;
+        o.pose.pose.position.y = wa * earliest_after->pose.pose.position.y +
+            wb * latest_before->pose.pose.position.y;
+        o.pose.pose.position.z = wa * earliest_after->pose.pose.position.z +
+            wb * latest_before->pose.pose.position.z;
+        tf::Quaternion qa(earliest_after->pose.pose.orientation.x,
+                          earliest_after->pose.pose.orientation.y,
+                          earliest_after->pose.pose.orientation.z,
+                          earliest_after->pose.pose.orientation.w);
+        tf::Quaternion qb(latest_before->pose.pose.orientation.x,
+                          latest_before->pose.pose.orientation.y,
+                          latest_before->pose.pose.orientation.z,
+                          latest_before->pose.pose.orientation.w);
+        q = qa.slerp(qb, wa);
+    } else {
+        ROS_INFO("Extrapolating");
+        double delta_t = (time - latest_before->header.stamp).toSec();
+        o.pose.pose.position.x = latest_before->pose.pose.position.x +
+            delta_t * latest_before->twist.twist.linear.x;
+        o.pose.pose.position.y = latest_before->pose.pose.position.y +
+            delta_t * latest_before->twist.twist.linear.y;
+        o.pose.pose.position.z = latest_before->pose.pose.position.z +
+            delta_t * latest_before->twist.twist.linear.z;
+        tf::Quaternion delta_q;
+        delta_q.setRPY(delta_t * latest_before->twist.twist.angular.x,
+                       delta_t * latest_before->twist.twist.angular.y,
+                       delta_t * latest_before->twist.twist.angular.z);
+        tf::Quaternion qb(latest_before->pose.pose.orientation.x,
+                          latest_before->pose.pose.orientation.y,
+                          latest_before->pose.pose.orientation.z,
+                          latest_before->pose.pose.orientation.w);
+        q = delta_q * qb;
+    }
+    o.pose.pose.orientation.x = q.x();
+    o.pose.pose.orientation.y = q.y();
+    o.pose.pose.orientation.z = q.z();
+    o.pose.pose.orientation.w = q.w();
+    current_odom_msg_ = o;
+    return true;
+}
+
 void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
   boost::mutex::scoped_lock(mutex_);
@@ -493,8 +556,6 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
   if (use_odom_) {
     tf::Transform current_odom_tf;
     tf::Transform reference_odom_tf;
-    nav_msgs::Odometry* oea = earliestOdomAfter(time);
-    nav_msgs::Odometry* olb = latestOdomBefore(time);
     ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
               reference_odom_msg_.pose.pose.position.x,
               reference_odom_msg_.pose.pose.position.y);
