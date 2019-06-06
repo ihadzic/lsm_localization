@@ -451,7 +451,7 @@ bool LaserScanMatcher::interpolateOdom(const ros::Time& time)
     o.header.stamp = time;
     tf::Quaternion q;
     if (earliest_after) {
-        ROS_INFO("Interpolating");
+        // we have two points around the scan, so interpolate
         double T = (earliest_after->header.stamp - latest_before->header.stamp).toSec();
         double wb = (earliest_after->header.stamp - time).toSec() / T;
         double wa = 1.0 - wb;
@@ -472,7 +472,7 @@ bool LaserScanMatcher::interpolateOdom(const ros::Time& time)
                           latest_before->pose.pose.orientation.w);
         q = qa.slerp(qb, wa);
     } else {
-        ROS_INFO("Extrapolating");
+        // extrapolate because we don't have the second point
         double delta_t = (time - latest_before->header.stamp).toSec();
         o.pose.pose.position.x = latest_before->pose.pose.position.x +
             delta_t * latest_before->twist.twist.linear.x;
@@ -501,7 +501,6 @@ bool LaserScanMatcher::interpolateOdom(const ros::Time& time)
 void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
   boost::mutex::scoped_lock(mutex_);
-  latest_odom_msg_ = *odom_msg;
   addOdomToHistory(odom_msg);
   if (!received_odom_)
   {
@@ -560,11 +559,11 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
               reference_odom_msg_.pose.pose.position.x,
               reference_odom_msg_.pose.pose.position.y);
     ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
-              latest_odom_msg_.pose.pose.position.x,
-              latest_odom_msg_.pose.pose.position.y);
-    createTfFromXYTheta(latest_odom_msg_.pose.pose.position.x,
-                        latest_odom_msg_.pose.pose.position.y,
-                        tf::getYaw(latest_odom_msg_.pose.pose.orientation),
+              current_odom_msg_.pose.pose.position.x,
+              current_odom_msg_.pose.pose.position.y);
+    createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
+                        current_odom_msg_.pose.pose.position.y,
+                        tf::getYaw(current_odom_msg_.pose.pose.orientation),
                         current_odom_tf);
     createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
                         reference_odom_msg_.pose.pose.position.y,
@@ -700,7 +699,7 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     return;
   }
 
-  reference_odom_msg_ = latest_odom_msg_;
+  reference_odom_msg_ = current_odom_msg_;
 
   // convert the input pose (typically in 'map' frame into lsm_fixed frame)
   pose.setOrigin(tf::Vector3(pose_msg->pose.pose.position.x,
@@ -788,6 +787,10 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
   ros::WallTime start = ros::WallTime::now();
   LDP curr_ldp_scan;
   int r = 0;
+  if (!interpolateOdom(scan_msg->header.stamp)) {
+    ROS_WARN("odometry interpolation failed, skipping scan");
+    return;
+  }
   if (use_map_) {
     if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
@@ -802,7 +805,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
         initial_pose_ = f2b_;
         predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
         initialpose_valid_ = true;
-        reference_odom_msg_ = latest_odom_msg_;
+        reference_odom_msg_ = current_odom_msg_;
       }
     } else
       ROS_INFO("initial pose not received yet, scan processing skipped");
@@ -1261,19 +1264,19 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
   // **** use wheel odometry
   if (use_odom_ && received_odom_)
   {
-    pr_ch_x = latest_odom_msg_.pose.pose.position.x -
+    pr_ch_x = current_odom_msg_.pose.pose.position.x -
               reference_odom_msg_.pose.pose.position.x;
 
-    pr_ch_y = latest_odom_msg_.pose.pose.position.y -
+    pr_ch_y = current_odom_msg_.pose.pose.position.y -
               reference_odom_msg_.pose.pose.position.y;
 
-    pr_ch_a = tf::getYaw(latest_odom_msg_.pose.pose.orientation) -
+    pr_ch_a = tf::getYaw(current_odom_msg_.pose.pose.orientation) -
               tf::getYaw(reference_odom_msg_.pose.pose.orientation);
 
     if      (pr_ch_a >= M_PI) pr_ch_a -= 2.0 * M_PI;
     else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
 
-    reference_odom_msg_ = latest_odom_msg_;
+    reference_odom_msg_ = current_odom_msg_;
   }
 
   // **** use imu

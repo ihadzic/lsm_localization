@@ -175,7 +175,6 @@ class LaserScanMatcher
 
     sensor_msgs::Imu latest_imu_msg_;
     sensor_msgs::Imu reference_imu_msg_;
-    nav_msgs::Odometry latest_odom_msg_;
     nav_msgs::Odometry current_odom_msg_;
     nav_msgs::Odometry reference_odom_msg_;
     geometry_msgs::Twist latest_vel_msg_;
