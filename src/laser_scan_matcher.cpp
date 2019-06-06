@@ -693,12 +693,14 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     ROS_WARN("map not loaded, cannot process initial pose");
     return;
   }
-
   if (use_odom_ && !received_odom_) {
     ROS_WARN("odom never received, cannot process initial pose");
     return;
   }
-
+  if (!interpolateOdom(pose_msg->header.stamp)) {
+    ROS_WARN("cannot interpolate odometry for initial pose timestamp");
+    return;
+  }
   reference_odom_msg_ = current_odom_msg_;
 
   // convert the input pose (typically in 'map' frame into lsm_fixed frame)
