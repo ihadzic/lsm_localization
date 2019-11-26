@@ -123,7 +123,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   if (use_odom_)
   {
     odom_subscriber_ = nh_.subscribe(
-      "kale_bot/robot/odom", 1, &LaserScanMatcher::odomCallback, this);
+      "/odom", 1, &LaserScanMatcher::odomCallback, this);
   }
   if (use_vel_)
   {
