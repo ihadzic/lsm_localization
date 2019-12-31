@@ -817,7 +817,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
   }
   if (r) {
     double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-    ROS_INFO("complete scan processing total duration: %.1f ms", dur);
+    ROS_DEBUG("complete scan processing total duration: %.1f ms", dur);
   }
 }
 
@@ -961,10 +961,10 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
          gsl_matrix_get(output_.cov_x_m, 1, 1) < max_variance_trans_ &&
          gsl_matrix_get(output_.cov_x_m, 2, 2) < max_variance_rot_)) {
       // the correction of the laser's position, in the laser frame
-      ROS_INFO("found correlation transform: x=%f, y=%f, yaw=%f",
+      ROS_DEBUG("found correlation transform: x=%f, y=%f, yaw=%f",
                output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
       if (input_.do_compute_covariance)
-        ROS_INFO("variances: %f, %f, %f",
+        ROS_DEBUG("variances: %f, %f, %f",
                  gsl_matrix_get(output_.cov_x_m, 0, 0),
                  gsl_matrix_get(output_.cov_x_m, 1, 1),
                  gsl_matrix_get(output_.cov_x_m, 2, 2));
@@ -981,7 +981,7 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
       doPublish(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-      ROS_INFO("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
+      ROS_DEBUG("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
       ld_free(curr_ldp_scan);
       ld_free(ref_ldp_scan);
       return 1;
