@@ -810,7 +810,9 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
         reference_odom_msg_ = current_odom_msg_;
       }
     } else
-      ROS_INFO("initial pose not received yet, scan processing skipped");
+      ROS_INFO_THROTTLE(2,
+        "initial pose not received yet, scan processing skipped"
+      );
   } else {
     laserScanToLDP(scan_msg, curr_ldp_scan);
     r = processScan(curr_ldp_scan, scan_msg->header.stamp);
