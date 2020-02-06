@@ -183,6 +183,12 @@ class LaserScanMatcher
     std::vector<double> constructed_ranges_;
     std::deque<nav_msgs::Odometry> odom_history_;
 
+    // covariance tracking
+    gsl_matrix *Sigma_odom_;
+    gsl_matrix *B_odom_;
+    gsl_matrix *Sigma_u_;
+    double theta_odom_;
+
     sm_params input_;
     sm_result output_;
     LDP prev_ldp_scan_;

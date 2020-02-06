@@ -52,7 +52,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   initialpose_valid_(false),
   map_res_(0.0),
   map_width_(0),
-  map_height_(0)
+  map_height_(0),
+  theta_odom_(0.0)
 {
   ROS_INFO("Starting LaserScanMatcher");
 
@@ -62,6 +63,9 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 
   // **** state variables
 
+  Sigma_odom_ = gsl_matrix_calloc(3, 3);
+  B_odom_ = gsl_matrix_calloc(3, 5);
+  Sigma_u_ = gsl_matrix_calloc(5, 5);
   resetState();
   pcl2f_.setIdentity();
   f2pcl_.setIdentity();
@@ -139,6 +143,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 LaserScanMatcher::~LaserScanMatcher()
 {
   ROS_INFO("Destroying LaserScanMatcher");
+  gsl_matrix_free(Sigma_odom_);
+  gsl_matrix_free(B_odom_);
 }
 
 void LaserScanMatcher::resetState()
@@ -517,11 +523,14 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
       return;
     }
     reference_odom_msg_ = *odom_msg;
+    gsl_matrix_set_zero(Sigma_odom_);
+    theta_odom_ = 0.0;
     received_odom_ = true;
     return;
   }
   // if we got here, we have what we need to do the integration
   assert (delta_t >= 0.0);
+  theta_odom_ += delta_t * odom_msg->twist.twist.angular.z;
 }
 
 void LaserScanMatcher::velCallback(const geometry_msgs::Twist::ConstPtr& twist_msg)
@@ -713,6 +722,8 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     return;
   }
   reference_odom_msg_ = current_odom_msg_;
+  gsl_matrix_set_zero(Sigma_odom_);
+  theta_odom_ = 0.0;
 
   // convert the input pose (typically in 'map' frame into lsm_fixed frame)
   pose.setOrigin(tf::Vector3(pose_msg->pose.pose.position.x,
@@ -819,6 +830,8 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
         predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
         initialpose_valid_ = true;
         reference_odom_msg_ = current_odom_msg_;
+        gsl_matrix_set_zero(Sigma_odom_);
+        theta_odom_ = 0.0;
       }
     } else
       ROS_INFO_THROTTLE(2,
@@ -1292,6 +1305,8 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
     else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
 
     reference_odom_msg_ = current_odom_msg_;
+    gsl_matrix_set_zero(Sigma_odom_);
+    theta_odom_ = 0.0;
   }
 
   // **** use imu
