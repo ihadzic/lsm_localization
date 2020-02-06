@@ -852,8 +852,8 @@ void LaserScanMatcher::doPublish(const ros::Time& time)
 
     if (input_.do_compute_covariance) {
       pose_with_covariance_msg->covariance = boost::assign::list_of
-        (gsl_matrix_get(output_.cov_x_m, 0, 0)) (0)  (0)  (0)  (0)  (0)
-        (0)  (gsl_matrix_get(output_.cov_x_m, 1, 1)) (0)  (0)  (0)  (0)
+        (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
+        (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
         (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
         (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
         (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
