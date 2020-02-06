@@ -505,7 +505,7 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
   if (!received_odom_)
   {
     if (!getBaseToFootprintTf(odom_msg->child_frame_id)) {
-      ROS_WARN("skipping dom");
+      ROS_WARN("skipping odom");
       return;
     }
     reference_odom_msg_ = *odom_msg;
