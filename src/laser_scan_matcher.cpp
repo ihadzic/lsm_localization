@@ -498,9 +498,17 @@ bool LaserScanMatcher::interpolateOdom(const ros::Time& time)
     return true;
 }
 
+double LaserScanMatcher::getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o)
+{
+  if (odom_history_.empty())
+    return -1.0;
+  return (o->header.stamp - odom_history_.front().header.stamp).toSec();
+}
+
 void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
   boost::mutex::scoped_lock(mutex_);
+  double delta_t = getOdomDeltaT(odom_msg);
   addOdomToHistory(odom_msg);
   if (!received_odom_)
   {
@@ -510,7 +518,10 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
     }
     reference_odom_msg_ = *odom_msg;
     received_odom_ = true;
+    return;
   }
+  // if we got here, we have what we need to do the integration
+  assert (delta_t >= 0.0);
 }
 
 void LaserScanMatcher::velCallback(const geometry_msgs::Twist::ConstPtr& twist_msg)

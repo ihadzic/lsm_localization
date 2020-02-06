@@ -193,6 +193,8 @@ class LaserScanMatcher
     void resetState();
     bool interpolateOdom(const ros::Time& time);
     void addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o);
+    double getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o);
+
     nav_msgs::Odometry* earliestOdomAfter(const ros::Time& time);
     nav_msgs::Odometry* latestOdomBefore(const ros::Time& time);
     int processScan(LDP& curr_ldp_scan, const ros::Time& time);
