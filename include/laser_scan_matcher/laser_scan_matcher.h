@@ -187,6 +187,7 @@ class LaserScanMatcher
     gsl_matrix *Sigma_odom_;
     gsl_matrix *B_odom_;
     gsl_matrix *Sigma_u_;
+    gsl_matrix *I1_;
     double theta_odom_;
 
     sm_params input_;

@@ -37,6 +37,7 @@
 
 #include <laser_scan_matcher/laser_scan_matcher.h>
 #include <boost/assign.hpp>
+#include <gsl/gsl_blas.h>
 
 namespace scan_tools
 {
@@ -65,7 +66,10 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 
   Sigma_odom_ = gsl_matrix_calloc(3, 3);
   B_odom_ = gsl_matrix_calloc(3, 5);
+  gsl_matrix_set(B_odom_, 2, 4, 1.0);
   Sigma_u_ = gsl_matrix_calloc(5, 5);
+  // interim results
+  I1_ = gsl_matrix_alloc(5, 3);
   resetState();
   pcl2f_.setIdentity();
   f2pcl_.setIdentity();
@@ -145,6 +149,7 @@ LaserScanMatcher::~LaserScanMatcher()
   ROS_INFO("Destroying LaserScanMatcher");
   gsl_matrix_free(Sigma_odom_);
   gsl_matrix_free(B_odom_);
+  gsl_matrix_free(I1_);
 }
 
 void LaserScanMatcher::resetState()
@@ -528,9 +533,46 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
     received_odom_ = true;
     return;
   }
+
   // if we got here, we have what we need to do the integration
   assert (delta_t >= 0.0);
+
+  // construct input covariance (see the paper)
+  // matrix is pre-cleared, so we don't have to touch what's always zero
+  gsl_matrix_set(Sigma_u_, 0, 0, odom_msg->twist.covariance[0]);
+  gsl_matrix_set(Sigma_u_, 0, 1, odom_msg->twist.covariance[1]);
+  gsl_matrix_set(Sigma_u_, 1, 0, odom_msg->twist.covariance[6]);
+  gsl_matrix_set(Sigma_u_, 1, 1, odom_msg->twist.covariance[7]);
+  gsl_matrix_set(Sigma_u_, 2, 2, gsl_matrix_get(Sigma_odom_, 2, 2));
+  gsl_matrix_set(Sigma_u_, 2, 3,
+                 gsl_matrix_get(Sigma_odom_, 2, 2) *
+                 odom_msg->twist.twist.linear.x *
+                 odom_msg->twist.twist.linear.y);
+  gsl_matrix_set(Sigma_u_, 3, 2,
+                 gsl_matrix_get(Sigma_odom_, 2, 2) *
+                 odom_msg->twist.twist.linear.x *
+                 odom_msg->twist.twist.linear.y);
+  gsl_matrix_set(Sigma_u_, 3, 3, gsl_matrix_get(Sigma_odom_, 2, 2));
+  gsl_matrix_set(Sigma_u_, 4, 4, odom_msg->twist.covariance[35]);
+
+  // construct B-matrix
   theta_odom_ += delta_t * odom_msg->twist.twist.angular.z;
+  double cos0 = cos(theta_odom_);
+  double sin0 = sin(theta_odom_);
+  double cos90 = cos(theta_odom_ + M_PI/2.0);
+  double sin90 = sin(theta_odom_ + M_PI/2.0);
+  gsl_matrix_set(B_odom_, 0, 0,  cos0);
+  gsl_matrix_set(B_odom_, 0, 1, -sin0);
+  gsl_matrix_set(B_odom_, 1, 0,  sin0);
+  gsl_matrix_set(B_odom_, 1, 1,  cos0);
+  gsl_matrix_set(B_odom_, 0, 2,  cos90);
+  gsl_matrix_set(B_odom_, 0, 3, -sin90);
+  gsl_matrix_set(B_odom_, 1, 2,  sin90);
+  gsl_matrix_set(B_odom_, 1, 3,  cos90);
+  // I1 = delta_t * Sigma_u * B_odom^T + 0 * I1
+  gsl_blas_dgemm(CblasNoTrans, CblasTrans, delta_t, Sigma_u_, B_odom_, 0.0, I1_);
+  // Sigma_odom = delta_t * B_odom * I1 + 1 * Sigma_odom (use beta = 1.0 to accumulate)
+  gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, delta_t, B_odom_, I1_, 1.0, Sigma_odom_);
 }
 
 void LaserScanMatcher::velCallback(const geometry_msgs::Twist::ConstPtr& twist_msg)
