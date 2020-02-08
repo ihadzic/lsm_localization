@@ -185,9 +185,12 @@ class LaserScanMatcher
 
     // covariance tracking
     gsl_matrix *Sigma_odom_;
+    gsl_matrix *Sigma_odom_trans_;
     gsl_matrix *B_odom_;
     gsl_matrix *Sigma_u_;
     gsl_matrix *I1_;
+    gsl_matrix *I2_;
+    gsl_matrix *trans_sigma_;
     double theta_odom_;
 
     sm_params input_;
@@ -201,6 +204,7 @@ class LaserScanMatcher
     bool interpolateOdom(const ros::Time& time);
     void addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o);
     double getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o);
+    void setTransSigmaMatrix(const double yaw);
 
     nav_msgs::Odometry* earliestOdomAfter(const ros::Time& time);
     nav_msgs::Odometry* latestOdomBefore(const ros::Time& time);

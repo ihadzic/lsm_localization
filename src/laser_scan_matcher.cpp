@@ -65,11 +65,15 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   // **** state variables
 
   Sigma_odom_ = gsl_matrix_calloc(3, 3);
+  Sigma_odom_trans_ = gsl_matrix_alloc(3, 3);
   B_odom_ = gsl_matrix_calloc(3, 5);
   gsl_matrix_set(B_odom_, 2, 4, 1.0);
   Sigma_u_ = gsl_matrix_calloc(5, 5);
+  trans_sigma_ = gsl_matrix_calloc(3, 3);
+  gsl_matrix_set(trans_sigma_, 2, 2, 1);
   // interim results
   I1_ = gsl_matrix_alloc(5, 3);
+  I2_ = gsl_matrix_alloc(3, 3);
   resetState();
   pcl2f_.setIdentity();
   f2pcl_.setIdentity();
@@ -148,8 +152,11 @@ LaserScanMatcher::~LaserScanMatcher()
 {
   ROS_INFO("Destroying LaserScanMatcher");
   gsl_matrix_free(Sigma_odom_);
+  gsl_matrix_free(Sigma_odom_trans_);
   gsl_matrix_free(B_odom_);
   gsl_matrix_free(I1_);
+  gsl_matrix_free(I2_);
+  gsl_matrix_free(trans_sigma_);
 }
 
 void LaserScanMatcher::resetState()
@@ -591,6 +598,14 @@ void LaserScanMatcher::velStmpCallback(const geometry_msgs::TwistStamped::ConstP
   received_vel_ = true;
 }
 
+void LaserScanMatcher::setTransSigmaMatrix(double yaw)
+{
+  gsl_matrix_set(trans_sigma_, 0, 0, cos(yaw));
+  gsl_matrix_set(trans_sigma_, 0, 1, -sin(yaw));
+  gsl_matrix_set(trans_sigma_, 1, 0, sin(yaw));
+  gsl_matrix_set(trans_sigma_, 1, 1, cos(yaw));
+}
+
 void LaserScanMatcher::beamAddIncidentAngle(double dx, double dy, double laser_yaw, std::vector<double>& angles)
 {
   double theta = atan2(dy, dx) - laser_yaw;
@@ -868,6 +883,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
       if (r) {
         // if localization was successful, use the estimated pose
         // as the reference for next time
+
         initial_pose_ = f2b_;
         predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
         initialpose_valid_ = true;
@@ -1046,7 +1062,22 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       // multiply by map-to-pcl on the left to get
       // map-to-base_link, which is the pose we are looking for
       pose_delta = base_to_laser_ * pose_delta_laser * laser_to_base_;
-      f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+      if (input_.do_compute_covariance) {
+        // Sigma_odom is the covariance of odometry-delta
+        // we need covariance in the map frame, so apply transforms
+        setTransSigmaMatrix(
+          tf::getYaw((initial_pose_ * base_to_footprint_ * base_to_laser_).getRotation())
+        );
+        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
+                       Sigma_odom_, trans_sigma_, 0.0, I2_);
+        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
+                       I2_, 0.0, Sigma_odom_trans_);
+        // TODO: this will become Kalman-filter combination
+        f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+      } else {
+        // no-covariance case, just take measurement at face value
+        f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+      }
       doPublish(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
       ROS_DEBUG("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
