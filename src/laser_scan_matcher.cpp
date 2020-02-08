@@ -110,6 +110,18 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
       "lsm/pose", 5);
   }
 
+  if (publish_predicted_pose_)
+  {
+    if (!input_.do_compute_covariance) {
+      ROS_WARN("publishing predicted pose requires 'do_compute_covariance' option");
+    } else if (!use_odom_) {
+      ROS_WARN("publishing predicted pose requires 'use_odom' option");
+    } else {
+      predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
+        "lsm/predicted_pose", 5);
+    }
+  }
+
   // *** subscribers
 
   initialpose_subscriber_ = nh_.subscribe(
@@ -276,6 +288,8 @@ void LaserScanMatcher::initParams()
     publish_pose_with_covariance_ = false;
   if (!nh_private_.getParam ("publish_pose_with_covariance_stamped", publish_pose_with_covariance_stamped_))
     publish_pose_with_covariance_stamped_ = false;
+  if (!nh_private_.getParam ("publish_predicted_pose", publish_predicted_pose_))
+    publish_predicted_pose_ = false;
 
   if (!nh_private_.getParam("position_covariance", position_covariance_))
   {
@@ -648,9 +662,9 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
                         reference_odom_tf);
     tf::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
     // apply calculated delta to the reference pose
-    tf::Transform predicted_pose =
+    predicted_pose_ =
       initial_pose_ * base_to_footprint_ * delta_odom_tf * footprint_to_base_;
-    predicted_pose_in_pcl_ = pcl2f_ * predicted_pose;
+    predicted_pose_in_pcl_ = pcl2f_ * predicted_pose_;
   } else {
     predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
   }
@@ -983,6 +997,25 @@ void LaserScanMatcher::doPublish(const ros::Time& time)
     }
 
     pose_with_covariance_stamped_publisher_.publish(pose_with_covariance_stamped_msg);
+  }
+
+  if (publish_predicted_pose_ && input_.do_compute_covariance && use_odom_) {
+    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
+    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
+
+    pose_with_covariance_stamped_msg->header.stamp    = time;
+    pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
+
+    tf::poseTFToMsg(predicted_pose_, pose_with_covariance_stamped_msg->pose.pose);
+
+    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
+      (gsl_matrix_get(Sigma_odom_trans_, 0, 0)) (gsl_matrix_get(Sigma_odom_trans_, 0, 1))  (0)  (0)  (0)  (0)
+      (gsl_matrix_get(Sigma_odom_trans_, 1, 0)) (gsl_matrix_get(Sigma_odom_trans_, 1, 1))  (0)  (0)  (0)  (0)
+      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
+      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
+      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
+      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(Sigma_odom_trans_, 2, 2));
+    predicted_pose_publisher_.publish(pose_with_covariance_stamped_msg);
   }
 
   if (publish_tf_) {

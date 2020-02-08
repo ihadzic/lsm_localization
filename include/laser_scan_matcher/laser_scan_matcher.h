@@ -90,11 +90,11 @@ class LaserScanMatcher
     tf::Transform base_to_footprint_;
     tf::Transform footprint_to_base_;
 
-
     ros::Publisher  pose_publisher_;
     ros::Publisher  pose_stamped_publisher_;
     ros::Publisher  pose_with_covariance_publisher_;
     ros::Publisher  pose_with_covariance_stamped_publisher_;
+    ros::Publisher  predicted_pose_publisher_;
     ros::Publisher  constructed_scan_publisher_;
 
     // **** parameters
@@ -123,6 +123,7 @@ class LaserScanMatcher
     bool publish_pose_with_covariance_;
     bool publish_pose_stamped_;
     bool publish_pose_with_covariance_stamped_;
+    bool publish_predicted_pose_;
     std::vector<double> position_covariance_;
     std::vector<double> orientation_covariance_;
 
@@ -163,6 +164,7 @@ class LaserScanMatcher
     double observed_time_inc_;
     std::string observed_scan_frame_;
 
+    tf::Transform predicted_pose_;
     tf::Transform predicted_pose_in_pcl_;
     tf::Transform initial_pose_;
     tf::Transform f2pcl_;  // fixed-to-point-cloud-local tf
