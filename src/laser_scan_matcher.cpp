@@ -37,7 +37,6 @@
 
 #include <laser_scan_matcher/laser_scan_matcher.h>
 #include <boost/assign.hpp>
-#include <gsl/gsl_blas.h>
 
 namespace scan_tools
 {
@@ -64,6 +63,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 
   // **** state variables
 
+  // pre-allocate all matrices for speed
   Sigma_odom_ = gsl_matrix_calloc(3, 3);
   Sigma_odom_trans_ = gsl_matrix_alloc(3, 3);
   B_odom_ = gsl_matrix_calloc(3, 5);
@@ -71,9 +71,16 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   Sigma_u_ = gsl_matrix_calloc(5, 5);
   trans_sigma_ = gsl_matrix_calloc(3, 3);
   gsl_matrix_set(trans_sigma_, 2, 2, 1);
+  kalman_gain_ = gsl_matrix_alloc(3, 3);
+  kalman_gain_comp_ = gsl_matrix_alloc(3, 3);
   // interim results
   I1_ = gsl_matrix_alloc(5, 3);
   I2_ = gsl_matrix_alloc(3, 3);
+  P2_ = gsl_permutation_alloc (3);
+  // pose vectors for kalman filter
+  xvec_ = gsl_vector_alloc(3);
+  yvec_ = gsl_vector_alloc(3);
+
   resetState();
   pcl2f_.setIdentity();
   f2pcl_.setIdentity();
@@ -168,7 +175,12 @@ LaserScanMatcher::~LaserScanMatcher()
   gsl_matrix_free(B_odom_);
   gsl_matrix_free(I1_);
   gsl_matrix_free(I2_);
+  gsl_permutation_free(P2_);
   gsl_matrix_free(trans_sigma_);
+  gsl_matrix_free(kalman_gain_);
+  gsl_matrix_free(kalman_gain_comp_);
+  gsl_vector_free(xvec_);
+  gsl_vector_free(yvec_);
 }
 
 void LaserScanMatcher::resetState()
@@ -1025,6 +1037,40 @@ void LaserScanMatcher::doPublish(const ros::Time& time)
 
 }
 
+tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
+{
+  int s;
+  tf::Transform measured_pose = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+
+  gsl_matrix_add(output_.cov_x_m, Sigma_odom_trans_);
+  // in gsl, matrix inversion goes vial LU decomposition
+  gsl_linalg_LU_decomp(output_.cov_x_m, P2_, &s);
+  gsl_linalg_LU_invert(output_.cov_x_m, P2_, I2_);
+  gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
+    1.0, Sigma_odom_trans_, I2_, 0.0, kalman_gain_);
+  gsl_matrix_set_identity(kalman_gain_comp_);
+  gsl_matrix_sub(kalman_gain_comp_, kalman_gain_);
+
+  // Sigma = (I-K)Sigma_odom
+  gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
+    1.0, kalman_gain_comp_, Sigma_odom_trans_, 0.0, output_.cov_x_m);
+  // y = K*predicted
+  gsl_vector_set(xvec_, 0, predicted_pose_.getOrigin().getX());
+  gsl_vector_set(xvec_, 1, predicted_pose_.getOrigin().getY());
+  gsl_vector_set(xvec_, 2, tf::getYaw(predicted_pose_.getRotation()));
+  gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_, xvec_, 0.0, yvec_);
+  // y += (I-K)measured
+  gsl_vector_set(xvec_, 0, measured_pose.getOrigin().getX());
+  gsl_vector_set(xvec_, 1, measured_pose.getOrigin().getY());
+  gsl_vector_set(xvec_, 2, tf::getYaw(measured_pose.getRotation()));
+  gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_comp_, xvec_, 1.0, yvec_);
+
+  return tf::Vector3(
+    gsl_vector_get(yvec_, 0),
+    gsl_vector_get(yvec_, 1),
+    gsl_vector_get(yvec_, 2));
+}
+
 int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time)
 {
   ros::WallTime start = ros::WallTime::now();
@@ -1105,8 +1151,8 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
                        Sigma_odom_, trans_sigma_, 0.0, I2_);
         gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
                        I2_, 0.0, Sigma_odom_trans_);
-        // TODO: this will become Kalman-filter combination
-        f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+        tf::Vector3 pv = fusePoses(pose_delta);
+        createTfFromXYTheta(pv.getX(), pv.getY(), pv.getZ(), f2b_);
       } else {
         // no-covariance case, just take measurement at face value
         f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;

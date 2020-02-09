@@ -54,6 +54,8 @@
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
+#include <gsl/gsl_blas.h>
+#include <gsl/gsl_linalg.h>
 #undef min
 #undef max
 
@@ -192,7 +194,12 @@ class LaserScanMatcher
     gsl_matrix *Sigma_u_;
     gsl_matrix *I1_;
     gsl_matrix *I2_;
+    gsl_permutation *P2_;
     gsl_matrix *trans_sigma_;
+    gsl_matrix *kalman_gain_;
+    gsl_matrix *kalman_gain_comp_;
+    gsl_vector *xvec_;
+    gsl_vector *yvec_;
     double theta_odom_;
 
     sm_params input_;
@@ -210,6 +217,7 @@ class LaserScanMatcher
 
     nav_msgs::Odometry* earliestOdomAfter(const ros::Time& time);
     nav_msgs::Odometry* latestOdomBefore(const ros::Time& time);
+    tf::Vector3 fusePoses(const tf::Transform& pose_delta);
     int processScan(LDP& curr_ldp_scan, const ros::Time& time);
     int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
     void doPublish(const ros::Time& time);
