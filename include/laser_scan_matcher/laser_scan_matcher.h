@@ -141,6 +141,7 @@ class LaserScanMatcher
 
     bool use_imu_;
     bool use_odom_;
+    bool no_odom_fusing_;
     bool use_vel_;
     bool stamped_vel_;
 

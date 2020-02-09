@@ -244,6 +244,8 @@ void LaserScanMatcher::initParams()
     use_imu_ = true;
   if (!nh_private_.getParam ("use_odom", use_odom_))
     use_odom_ = true;
+  if (!nh_private_.getParam ("no_odom_fusing", no_odom_fusing_))
+    no_odom_fusing_ = false;
   if (!nh_private_.getParam ("use_vel", use_vel_))
     use_vel_ = false;
 
@@ -1151,8 +1153,12 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
                        Sigma_odom_, trans_sigma_, 0.0, I2_);
         gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
                        I2_, 0.0, Sigma_odom_trans_);
-        tf::Vector3 pv = fusePoses(pose_delta);
-        createTfFromXYTheta(pv.getX(), pv.getY(), pv.getZ(), f2b_);
+        if (!no_odom_fusing_) {
+          tf::Vector3 pv = fusePoses(pose_delta);
+          createTfFromXYTheta(pv.getX(), pv.getY(), pv.getZ(), f2b_);
+        } else {
+          f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+        }
       } else {
         // no-covariance case, just take measurement at face value
         f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
