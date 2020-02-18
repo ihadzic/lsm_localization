@@ -1061,7 +1061,7 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   tf::Transform measured_pose = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
 
   gsl_matrix_add(output_.cov_x_m, Sigma_odom_trans_);
-  // in gsl, matrix inversion goes vial LU decomposition
+  // in gsl, matrix inversion goes via LU decomposition
   gsl_linalg_LU_decomp(output_.cov_x_m, P2_, &s);
   gsl_linalg_LU_invert(output_.cov_x_m, P2_, I2_);
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
