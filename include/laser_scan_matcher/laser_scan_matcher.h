@@ -211,7 +211,7 @@ class LaserScanMatcher
 
     void initParams();
     void resetState();
-    bool interpolateOdom(const ros::Time& time);
+    double syncOdom(const ros::Time& time);
     void addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o);
     double getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o);
     void setTransSigmaMatrix(const double yaw);
