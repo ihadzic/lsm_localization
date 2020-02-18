@@ -221,7 +221,8 @@ class LaserScanMatcher
     tf::Vector3 fusePoses(const tf::Transform& pose_delta);
     int processScan(LDP& curr_ldp_scan, const ros::Time& time);
     int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
-    void doPublish(const ros::Time& time);
+    void doPublishScanRate(const ros::Time& time);
+    void doPublishOdomRate(const ros::Time& time);
 
     void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
                               LDP& ldp);

@@ -608,6 +608,7 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
   gsl_blas_dgemm(CblasNoTrans, CblasTrans, delta_t, Sigma_u_, B_odom_, 0.0, I1_);
   // Sigma_odom = delta_t * B_odom * I1 + 1 * Sigma_odom (use beta = 1.0 to accumulate)
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, delta_t, B_odom_, I1_, 1.0, Sigma_odom_);
+  doPublishOdomRate(odom_msg->header.stamp);
 }
 
 void LaserScanMatcher::velCallback(const geometry_msgs::Twist::ConstPtr& twist_msg)
@@ -933,7 +934,29 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
   }
 }
 
-void LaserScanMatcher::doPublish(const ros::Time& time)
+void LaserScanMatcher::doPublishOdomRate(const ros::Time& time)
+{
+  if (publish_predicted_pose_ && input_.do_compute_covariance && use_odom_) {
+    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
+    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
+
+    pose_with_covariance_stamped_msg->header.stamp    = time;
+    pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
+
+    tf::poseTFToMsg(predicted_pose_, pose_with_covariance_stamped_msg->pose.pose);
+
+    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
+      (gsl_matrix_get(Sigma_odom_trans_, 0, 0)) (gsl_matrix_get(Sigma_odom_trans_, 0, 1))  (0)  (0)  (0)  (0)
+      (gsl_matrix_get(Sigma_odom_trans_, 1, 0)) (gsl_matrix_get(Sigma_odom_trans_, 1, 1))  (0)  (0)  (0)  (0)
+      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
+      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
+      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
+      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(Sigma_odom_trans_, 2, 2));
+    predicted_pose_publisher_.publish(pose_with_covariance_stamped_msg);
+  }
+}
+
+void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
 {
   if (publish_pose_) {
     // unstamped Pose2D message
@@ -1011,25 +1034,6 @@ void LaserScanMatcher::doPublish(const ros::Time& time)
     }
 
     pose_with_covariance_stamped_publisher_.publish(pose_with_covariance_stamped_msg);
-  }
-
-  if (publish_predicted_pose_ && input_.do_compute_covariance && use_odom_) {
-    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
-    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
-
-    pose_with_covariance_stamped_msg->header.stamp    = time;
-    pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
-
-    tf::poseTFToMsg(predicted_pose_, pose_with_covariance_stamped_msg->pose.pose);
-
-    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
-      (gsl_matrix_get(Sigma_odom_trans_, 0, 0)) (gsl_matrix_get(Sigma_odom_trans_, 0, 1))  (0)  (0)  (0)  (0)
-      (gsl_matrix_get(Sigma_odom_trans_, 1, 0)) (gsl_matrix_get(Sigma_odom_trans_, 1, 1))  (0)  (0)  (0)  (0)
-      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(Sigma_odom_trans_, 2, 2));
-    predicted_pose_publisher_.publish(pose_with_covariance_stamped_msg);
   }
 
   if (publish_tf_) {
@@ -1163,7 +1167,7 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
         // no-covariance case, just take measurement at face value
         f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
       }
-      doPublish(time);
+      doPublishScanRate(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
       ROS_DEBUG("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
       ld_free(curr_ldp_scan);
@@ -1266,7 +1270,7 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
     // update the pose in the world frame
     f2b_ = f2b_kf_ * corr_ch;
 
-    doPublish(time);
+    doPublishScanRate(time);
     success = 1;
   }
   else
