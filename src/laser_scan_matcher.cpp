@@ -551,47 +551,50 @@ double LaserScanMatcher::getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o)
   return (o->header.stamp - odom_history_.front().header.stamp).toSec();
 }
 
-void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
+void LaserScanMatcher::doPredictPose(double delta_t)
 {
-  boost::mutex::scoped_lock(mutex_);
-  double delta_t = getOdomDeltaT(odom_msg);
-  addOdomToHistory(odom_msg);
-  if (!received_odom_)
-  {
-    if (!getBaseToFootprintTf(odom_msg->child_frame_id)) {
-      ROS_WARN("skipping odom");
-      return;
-    }
-    reference_odom_msg_ = *odom_msg;
-    gsl_matrix_set_zero(Sigma_odom_);
-    theta_odom_ = 0.0;
-    received_odom_ = true;
-    return;
-  }
+  tf::Transform current_odom_tf;
+  tf::Transform reference_odom_tf;
+  ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
+	    reference_odom_msg_.pose.pose.position.x,
+	    reference_odom_msg_.pose.pose.position.y);
+  ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
+	    current_odom_msg_.pose.pose.position.x,
+	    current_odom_msg_.pose.pose.position.y);
+  createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
+		      current_odom_msg_.pose.pose.position.y,
+		      tf::getYaw(current_odom_msg_.pose.pose.orientation),
+		      current_odom_tf);
+  createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
+		      reference_odom_msg_.pose.pose.position.y,
+		      tf::getYaw(reference_odom_msg_.pose.pose.orientation),
+		      reference_odom_tf);
+  tf::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
 
-  // if we got here, we have what we need to do the integration
-  assert (delta_t >= 0.0);
+  // apply calculated delta to the reference pose
+  predicted_pose_ =
+    initial_pose_ * base_to_footprint_ * delta_odom_tf * footprint_to_base_;
 
   // construct input covariance (see the paper)
   // matrix is pre-cleared, so we don't have to touch what's always zero
-  gsl_matrix_set(Sigma_u_, 0, 0, odom_msg->twist.covariance[0]);
-  gsl_matrix_set(Sigma_u_, 0, 1, odom_msg->twist.covariance[1]);
-  gsl_matrix_set(Sigma_u_, 1, 0, odom_msg->twist.covariance[6]);
-  gsl_matrix_set(Sigma_u_, 1, 1, odom_msg->twist.covariance[7]);
+  gsl_matrix_set(Sigma_u_, 0, 0, current_odom_msg_.twist.covariance[0]);
+  gsl_matrix_set(Sigma_u_, 0, 1, current_odom_msg_.twist.covariance[1]);
+  gsl_matrix_set(Sigma_u_, 1, 0, current_odom_msg_.twist.covariance[6]);
+  gsl_matrix_set(Sigma_u_, 1, 1, current_odom_msg_.twist.covariance[7]);
   gsl_matrix_set(Sigma_u_, 2, 2, gsl_matrix_get(Sigma_odom_, 2, 2));
   gsl_matrix_set(Sigma_u_, 2, 3,
                  gsl_matrix_get(Sigma_odom_, 2, 2) *
-                 odom_msg->twist.twist.linear.x *
-                 odom_msg->twist.twist.linear.y);
+                 current_odom_msg_.twist.twist.linear.x *
+                 current_odom_msg_.twist.twist.linear.y);
   gsl_matrix_set(Sigma_u_, 3, 2,
                  gsl_matrix_get(Sigma_odom_, 2, 2) *
-                 odom_msg->twist.twist.linear.x *
-                 odom_msg->twist.twist.linear.y);
+                 current_odom_msg_.twist.twist.linear.x *
+                 current_odom_msg_.twist.twist.linear.y);
   gsl_matrix_set(Sigma_u_, 3, 3, gsl_matrix_get(Sigma_odom_, 2, 2));
-  gsl_matrix_set(Sigma_u_, 4, 4, odom_msg->twist.covariance[35]);
+  gsl_matrix_set(Sigma_u_, 4, 4, current_odom_msg_.twist.covariance[35]);
 
   // construct B-matrix
-  theta_odom_ += delta_t * odom_msg->twist.twist.angular.z;
+  theta_odom_ += delta_t * current_odom_msg_.twist.twist.angular.z;
   double cos0 = cos(theta_odom_);
   double sin0 = sin(theta_odom_);
   double cos90 = cos(theta_odom_ + M_PI/2.0);
@@ -608,6 +611,31 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
   gsl_blas_dgemm(CblasNoTrans, CblasTrans, delta_t, Sigma_u_, B_odom_, 0.0, I1_);
   // Sigma_odom = delta_t * B_odom * I1 + 1 * Sigma_odom (use beta = 1.0 to accumulate)
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, delta_t, B_odom_, I1_, 1.0, Sigma_odom_);
+}
+
+void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
+{
+  boost::mutex::scoped_lock(mutex_);
+  double delta_t = getOdomDeltaT(odom_msg);
+  addOdomToHistory(odom_msg);
+  if (!received_odom_)
+  {
+    if (!getBaseToFootprintTf(odom_msg->child_frame_id)) {
+      ROS_WARN("skipping odom");
+      return;
+    }
+    reference_odom_msg_ = *odom_msg;
+    current_odom_msg_ = *odom_msg;
+    gsl_matrix_set_zero(Sigma_odom_);
+    theta_odom_ = 0.0;
+    received_odom_ = true;
+    return;
+  }
+
+  // if we got here, we have what we need to do the integration
+  assert (delta_t >= 0.0);
+  current_odom_msg_ = *odom_msg;
+  doPredictPose(delta_t);
   doPublishOdomRate(odom_msg->header.stamp);
 }
 
@@ -659,26 +687,6 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
   double angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
 
   if (use_odom_) {
-    tf::Transform current_odom_tf;
-    tf::Transform reference_odom_tf;
-    ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
-              reference_odom_msg_.pose.pose.position.x,
-              reference_odom_msg_.pose.pose.position.y);
-    ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
-              current_odom_msg_.pose.pose.position.x,
-              current_odom_msg_.pose.pose.position.y);
-    createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
-                        current_odom_msg_.pose.pose.position.y,
-                        tf::getYaw(current_odom_msg_.pose.pose.orientation),
-                        current_odom_tf);
-    createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
-                        reference_odom_msg_.pose.pose.position.y,
-                        tf::getYaw(reference_odom_msg_.pose.pose.orientation),
-                        reference_odom_tf);
-    tf::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
-    // apply calculated delta to the reference pose
-    predicted_pose_ =
-      initial_pose_ * base_to_footprint_ * delta_odom_tf * footprint_to_base_;
     predicted_pose_in_pcl_ = pcl2f_ * predicted_pose_;
   } else {
     predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
@@ -901,6 +909,10 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     ROS_WARN("odometry interpolation failed, skipping scan");
     return;
   }
+  // run prediction once again here, so that we end up using
+  // interpolated odometry
+  double delta_t = (scan_msg->header.stamp - odom_history_.front().header.stamp).toSec();
+  doPredictPose(delta_t);
   if (use_map_) {
     if (initialpose_valid_) {
       // if the reference frame comes from the map, replace it
