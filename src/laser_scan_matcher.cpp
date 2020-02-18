@@ -66,6 +66,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   // pre-allocate all matrices for speed
   Sigma_odom_ = gsl_matrix_calloc(3, 3);
   Sigma_odom_trans_ = gsl_matrix_alloc(3, 3);
+  Sigma_measured_ = gsl_matrix_calloc(3, 3);
   B_odom_ = gsl_matrix_calloc(3, 5);
   gsl_matrix_set(B_odom_, 2, 4, 1.0);
   Sigma_u_ = gsl_matrix_calloc(5, 5);
@@ -84,6 +85,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   resetState();
   pcl2f_.setIdentity();
   f2pcl_.setIdentity();
+  measured_pose_.setIdentity();
+  predicted_pose_.setIdentity();
   odom_history_.resize(MAX_ODOM_HISTORY);
 
   // **** publishers
@@ -126,6 +129,16 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
     } else {
       predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
         "lsm/predicted_pose", 5);
+    }
+  }
+
+  if (publish_measured_pose_)
+  {
+    if (!input_.do_compute_covariance) {
+      ROS_WARN("publishing measured pose requires 'do_compute_covariance' option");
+    } else {
+      measured_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
+        "lsm/measured_pose", 5);
     }
   }
 
@@ -172,6 +185,7 @@ LaserScanMatcher::~LaserScanMatcher()
   ROS_INFO("Destroying LaserScanMatcher");
   gsl_matrix_free(Sigma_odom_);
   gsl_matrix_free(Sigma_odom_trans_);
+  gsl_matrix_free(Sigma_measured_);
   gsl_matrix_free(B_odom_);
   gsl_matrix_free(I1_);
   gsl_matrix_free(I2_);
@@ -304,6 +318,8 @@ void LaserScanMatcher::initParams()
     publish_pose_with_covariance_stamped_ = false;
   if (!nh_private_.getParam ("publish_predicted_pose", publish_predicted_pose_))
     publish_predicted_pose_ = false;
+  if (!nh_private_.getParam ("publish_measured_pose", publish_measured_pose_))
+    publish_measured_pose_ = false;
 
   if (!nh_private_.getParam("position_covariance", position_covariance_))
   {
@@ -1021,6 +1037,25 @@ void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
     pose_with_covariance_stamped_publisher_.publish(pose_with_covariance_stamped_msg);
   }
 
+  if (publish_measured_pose_ && input_.do_compute_covariance) {
+    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
+    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
+
+    pose_with_covariance_stamped_msg->header.stamp    = time;
+    pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
+
+    tf::poseTFToMsg(measured_pose_, pose_with_covariance_stamped_msg->pose.pose);
+
+    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
+      (gsl_matrix_get(Sigma_measured_, 0, 0)) (gsl_matrix_get(Sigma_measured_, 0, 1))  (0)  (0)  (0)  (0)
+      (gsl_matrix_get(Sigma_measured_, 1, 0)) (gsl_matrix_get(Sigma_measured_, 1, 1))  (0)  (0)  (0)  (0)
+      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
+      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
+      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
+      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(Sigma_measured_, 2, 2));
+    measured_pose_publisher_.publish(pose_with_covariance_stamped_msg);
+  }
+
   if (publish_tf_) {
     tf::StampedTransform transform_msg (f2b_, time, fixed_frame_, base_frame_);
     tf_broadcaster_.sendTransform (transform_msg);
@@ -1031,8 +1066,9 @@ void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
 tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
 {
   int s;
-  tf::Transform measured_pose = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
 
+  measured_pose_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+  gsl_matrix_memcpy(Sigma_measured_, output_.cov_x_m);
   gsl_matrix_add(output_.cov_x_m, Sigma_odom_trans_);
   // in gsl, matrix inversion goes via LU decomposition
   gsl_linalg_LU_decomp(output_.cov_x_m, P2_, &s);
@@ -1046,9 +1082,9 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
     1.0, kalman_gain_comp_, Sigma_odom_trans_, 0.0, output_.cov_x_m);
   // y = K*measured
-  gsl_vector_set(xvec_, 0, measured_pose.getOrigin().getX());
-  gsl_vector_set(xvec_, 1, measured_pose.getOrigin().getY());
-  gsl_vector_set(xvec_, 2, tf::getYaw(measured_pose.getRotation()));
+  gsl_vector_set(xvec_, 0, measured_pose_.getOrigin().getX());
+  gsl_vector_set(xvec_, 1, measured_pose_.getOrigin().getY());
+  gsl_vector_set(xvec_, 2, tf::getYaw(measured_pose_.getRotation()));
   gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_, xvec_, 0.0, yvec_);
   // y += (I-K)*predicted
   gsl_vector_set(xvec_, 0, predicted_pose_.getOrigin().getX());

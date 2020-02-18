@@ -97,6 +97,7 @@ class LaserScanMatcher
     ros::Publisher  pose_with_covariance_publisher_;
     ros::Publisher  pose_with_covariance_stamped_publisher_;
     ros::Publisher  predicted_pose_publisher_;
+    ros::Publisher  measured_pose_publisher_;
     ros::Publisher  constructed_scan_publisher_;
 
     // **** parameters
@@ -126,6 +127,7 @@ class LaserScanMatcher
     bool publish_pose_stamped_;
     bool publish_pose_with_covariance_stamped_;
     bool publish_predicted_pose_;
+    bool publish_measured_pose_;
     std::vector<double> position_covariance_;
     std::vector<double> orientation_covariance_;
 
@@ -168,6 +170,7 @@ class LaserScanMatcher
     std::string observed_scan_frame_;
 
     tf::Transform predicted_pose_;
+    tf::Transform measured_pose_;
     tf::Transform predicted_pose_in_pcl_;
     tf::Transform initial_pose_;
     tf::Transform f2pcl_;  // fixed-to-point-cloud-local tf
@@ -191,6 +194,7 @@ class LaserScanMatcher
     // covariance tracking
     gsl_matrix *Sigma_odom_;
     gsl_matrix *Sigma_odom_trans_;
+    gsl_matrix *Sigma_measured_;
     gsl_matrix *B_odom_;
     gsl_matrix *Sigma_u_;
     gsl_matrix *I1_;
