@@ -1092,6 +1092,16 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   gsl_vector_set(xvec_, 2, tf::getYaw(predicted_pose_.getRotation()));
   gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_comp_, xvec_, 1.0, yvec_);
 
+  ROS_DEBUG("kalman_gain:\n%e %e %e\n%e %e %e\n%e %e %e",
+            gsl_matrix_get(kalman_gain_, 0, 0),
+            gsl_matrix_get(kalman_gain_, 0, 1),
+            gsl_matrix_get(kalman_gain_, 0, 2),
+            gsl_matrix_get(kalman_gain_, 1, 0),
+            gsl_matrix_get(kalman_gain_, 1, 1),
+            gsl_matrix_get(kalman_gain_, 1, 2),
+            gsl_matrix_get(kalman_gain_, 2, 0),
+            gsl_matrix_get(kalman_gain_, 2, 1),
+            gsl_matrix_get(kalman_gain_, 2, 2));
   return tf::Vector3(
     gsl_vector_get(yvec_, 0),
     gsl_vector_get(yvec_, 1),
