@@ -1045,15 +1045,15 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   // Sigma = (I-K)Sigma_odom
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
     1.0, kalman_gain_comp_, Sigma_odom_trans_, 0.0, output_.cov_x_m);
-  // y = K*predicted
-  gsl_vector_set(xvec_, 0, predicted_pose_.getOrigin().getX());
-  gsl_vector_set(xvec_, 1, predicted_pose_.getOrigin().getY());
-  gsl_vector_set(xvec_, 2, tf::getYaw(predicted_pose_.getRotation()));
-  gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_, xvec_, 0.0, yvec_);
-  // y += (I-K)measured
+  // y = K*measured
   gsl_vector_set(xvec_, 0, measured_pose.getOrigin().getX());
   gsl_vector_set(xvec_, 1, measured_pose.getOrigin().getY());
   gsl_vector_set(xvec_, 2, tf::getYaw(measured_pose.getRotation()));
+  gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_, xvec_, 0.0, yvec_);
+  // y += (I-K)*predicted
+  gsl_vector_set(xvec_, 0, predicted_pose_.getOrigin().getX());
+  gsl_vector_set(xvec_, 1, predicted_pose_.getOrigin().getY());
+  gsl_vector_set(xvec_, 2, tf::getYaw(predicted_pose_.getRotation()));
   gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_comp_, xvec_, 1.0, yvec_);
 
   return tf::Vector3(
