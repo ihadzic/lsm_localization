@@ -544,12 +544,6 @@ void LaserScanMatcher::doPredictPose(double delta_t)
 {
   tf::Transform current_odom_tf;
   tf::Transform reference_odom_tf;
-  ROS_DEBUG("%s: ref_odom=(%f, %f)", __func__,
-	    reference_odom_msg_.pose.pose.position.x,
-	    reference_odom_msg_.pose.pose.position.y);
-  ROS_DEBUG("%s: curr_odom=(%f, %f)", __func__,
-	    current_odom_msg_.pose.pose.position.x,
-	    current_odom_msg_.pose.pose.position.y);
   createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
 		      current_odom_msg_.pose.pose.position.y,
 		      tf::getYaw(current_odom_msg_.pose.pose.orientation),
