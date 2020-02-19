@@ -138,8 +138,18 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
       ROS_WARN("publishing measured pose requires 'do_compute_covariance' option");
     } else {
       measured_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-        "lsm/measured_pose", 5);
+       "lsm/measured_pose", 5);
     }
+  }
+
+  if (publish_debug_)
+  {
+    debug_odom_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+      "lsm/debug/odom_delta", 5);
+    debug_odom_reference_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+      "lsm/debug/odom_reference", 5);
+    debug_odom_current_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+      "lsm/debug/odom_current", 5);
   }
 
   // *** subscribers
@@ -320,6 +330,8 @@ void LaserScanMatcher::initParams()
     publish_predicted_pose_ = false;
   if (!nh_private_.getParam ("publish_measured_pose", publish_measured_pose_))
     publish_measured_pose_ = false;
+  if (!nh_private_.getParam ("publish_debug", publish_debug_))
+    publish_debug_ = false;
 
   if (!nh_private_.getParam("position_covariance", position_covariance_))
   {
@@ -594,6 +606,12 @@ void LaserScanMatcher::doPredictPose(double delta_t)
   gsl_blas_dgemm(CblasNoTrans, CblasTrans, delta_t, Sigma_u_, B_odom_, 0.0, I1_);
   // Sigma_odom = delta_t * B_odom * I1 + 1 * Sigma_odom (use beta = 1.0 to accumulate)
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, delta_t, B_odom_, I1_, 1.0, Sigma_odom_);
+
+  if (publish_debug_) {
+    doPublishDebugTF(current_odom_msg_.header.stamp, delta_odom_tf, debug_odom_delta_publisher_, "");
+    doPublishDebugTF(current_odom_msg_.header.stamp, reference_odom_tf, debug_odom_reference_publisher_, "odom");
+    doPublishDebugTF(current_odom_msg_.header.stamp, current_odom_tf, debug_odom_current_publisher_, "odom");
+  }
 }
 
 void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
@@ -927,6 +945,16 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     double dur = (ros::WallTime::now() - start).toSec() * 1e3;
     ROS_DEBUG("complete scan processing total duration: %.1f ms", dur);
   }
+}
+
+void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transform& transform, const ros::Publisher &publisher, const std::string& frame)
+{
+  geometry_msgs::PoseStamped::Ptr pose_stamped_msg;
+  pose_stamped_msg = boost::make_shared<geometry_msgs::PoseStamped>();
+  pose_stamped_msg->header.stamp = time;
+  pose_stamped_msg->header.frame_id = frame;
+  tf::poseTFToMsg(transform, pose_stamped_msg->pose);
+  publisher.publish(pose_stamped_msg);
 }
 
 void LaserScanMatcher::doPublishOdomRate(const ros::Time& time)

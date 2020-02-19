@@ -100,6 +100,10 @@ class LaserScanMatcher
     ros::Publisher  measured_pose_publisher_;
     ros::Publisher  constructed_scan_publisher_;
 
+    ros::Publisher  debug_odom_delta_publisher_;
+    ros::Publisher  debug_odom_reference_publisher_;
+    ros::Publisher  debug_odom_current_publisher_;
+
     // **** parameters
 
     std::string base_frame_;
@@ -128,6 +132,7 @@ class LaserScanMatcher
     bool publish_pose_with_covariance_stamped_;
     bool publish_predicted_pose_;
     bool publish_measured_pose_;
+    bool publish_debug_;
     std::vector<double> position_covariance_;
     std::vector<double> orientation_covariance_;
 
@@ -228,6 +233,7 @@ class LaserScanMatcher
     void doPredictPose(double delta_t);
     void doPublishScanRate(const ros::Time& time);
     void doPublishOdomRate(const ros::Time& time);
+    void doPublishDebugTF(const ros::Time& time, const tf::Transform& odom_delta, const ros::Publisher& publisher, const std::string& frame);
 
     void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
                               LDP& ldp);
