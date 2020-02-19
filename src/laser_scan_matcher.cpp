@@ -518,7 +518,7 @@ double LaserScanMatcher::syncOdom(const ros::Time& time)
         delta_t * latest_before->twist.twist.linear.z;
     tf::Quaternion delta_q;
     delta_q.setRPY(delta_t * latest_before->twist.twist.angular.x,
-		   delta_t * latest_before->twist.twist.angular.y,
+                   delta_t * latest_before->twist.twist.angular.y,
                    delta_t * latest_before->twist.twist.angular.z);
     tf::Quaternion qb(latest_before->pose.pose.orientation.x,
                       latest_before->pose.pose.orientation.y,
@@ -545,13 +545,13 @@ void LaserScanMatcher::doPredictPose(double delta_t)
   tf::Transform current_odom_tf;
   tf::Transform reference_odom_tf;
   createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
-		      current_odom_msg_.pose.pose.position.y,
-		      tf::getYaw(current_odom_msg_.pose.pose.orientation),
-		      current_odom_tf);
+                      current_odom_msg_.pose.pose.position.y,
+                      tf::getYaw(current_odom_msg_.pose.pose.orientation),
+                      current_odom_tf);
   createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
-		      reference_odom_msg_.pose.pose.position.y,
-		      tf::getYaw(reference_odom_msg_.pose.pose.orientation),
-		      reference_odom_tf);
+                      reference_odom_msg_.pose.pose.position.y,
+                      tf::getYaw(reference_odom_msg_.pose.pose.orientation),
+                      reference_odom_tf);
   tf::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
 
   // apply calculated delta to the reference pose
