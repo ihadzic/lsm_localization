@@ -1108,15 +1108,22 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   // Sigma = (I-K)Sigma_odom
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
     1.0, kalman_gain_comp_, Sigma_odom_trans_, 0.0, output_.cov_x_m);
+  double measured_pose_yaw = tf::getYaw(measured_pose_.getRotation());
+  double predicted_pose_yaw = tf::getYaw(predicted_pose_.getRotation());
+  // handle discontinuity around +/- PI
+  if (measured_pose_yaw < -M_PI/2.0 && predicted_pose_yaw > M_PI/2.0)
+    measured_pose_yaw += 2*M_PI;
+  else if (measured_pose_yaw > M_PI/2.0  && predicted_pose_yaw < -M_PI/2.0)
+    predicted_pose_yaw += 2*M_PI;
   // y = K*measured
   gsl_vector_set(xvec_, 0, measured_pose_.getOrigin().getX());
   gsl_vector_set(xvec_, 1, measured_pose_.getOrigin().getY());
-  gsl_vector_set(xvec_, 2, tf::getYaw(measured_pose_.getRotation()));
+  gsl_vector_set(xvec_, 2, measured_pose_yaw);
   gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_, xvec_, 0.0, yvec_);
   // y += (I-K)*predicted
   gsl_vector_set(xvec_, 0, predicted_pose_.getOrigin().getX());
   gsl_vector_set(xvec_, 1, predicted_pose_.getOrigin().getY());
-  gsl_vector_set(xvec_, 2, tf::getYaw(predicted_pose_.getRotation()));
+  gsl_vector_set(xvec_, 2, predicted_pose_yaw);
   gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_comp_, xvec_, 1.0, yvec_);
 
   ROS_DEBUG("kalman_gain:\n%e %e %e\n%e %e %e\n%e %e %e",
