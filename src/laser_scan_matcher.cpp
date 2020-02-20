@@ -146,6 +146,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   {
     debug_odom_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
       "lsm/debug/odom_delta", 5);
+    debug_laser_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+      "lsm/debug/laser_delta", 5);
     debug_odom_reference_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
       "lsm/debug/odom_reference", 5);
     debug_odom_current_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
@@ -1191,7 +1193,6 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
                  gsl_matrix_get(output_.cov_x_m, 1, 1),
                  gsl_matrix_get(output_.cov_x_m, 2, 2));
       tf::Transform pose_delta_laser;
-      tf::Transform pose_delta;
       createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
                           pose_delta_laser);
       // predicted pose is pcl-to-base_link
@@ -1199,7 +1200,10 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       // operands get us corrected pcl-to-base_link
       // multiply by map-to-pcl on the left to get
       // map-to-base_link, which is the pose we are looking for
-      pose_delta = base_to_laser_ * pose_delta_laser * laser_to_base_;
+      tf::Transform pose_delta =
+        base_to_laser_ * pose_delta_laser * laser_to_base_;
+      if (publish_debug_)
+        doPublishDebugTF(time, pose_delta, debug_laser_delta_publisher_, "");
       if (input_.do_compute_covariance) {
         // Sigma_odom is the covariance of odometry-delta
         // we need covariance in the map frame, so apply transforms

@@ -101,6 +101,7 @@ class LaserScanMatcher
     ros::Publisher  constructed_scan_publisher_;
 
     ros::Publisher  debug_odom_delta_publisher_;
+    ros::Publisher  debug_laser_delta_publisher_;
     ros::Publisher  debug_odom_reference_publisher_;
     ros::Publisher  debug_odom_current_publisher_;
 
