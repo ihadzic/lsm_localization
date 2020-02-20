@@ -122,6 +122,7 @@ class LaserScanMatcher
     double default_angle_inc_;
     double default_scan_time_;
     double default_time_inc_;
+    double max_pose_delta_yaw_;
     double map_occupancy_threshold_;
     bool use_map_;
     bool initialpose_valid_;

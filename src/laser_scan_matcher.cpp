@@ -307,6 +307,9 @@ void LaserScanMatcher::initParams()
   if (!nh_private_.getParam ("max_variance_rot", max_variance_rot_))
     max_variance_rot_ = 1e-5;
 
+  if (!nh_private_.getParam ("max_pose_delta_yaw", max_pose_delta_yaw_))
+    max_pose_delta_yaw_ = 0.707; // sqrt(2)/2 or 45 degrees
+
   // **** Are velocity input messages stamped?
   // if false, will subscribe to Twist msgs on /vel
   // if true, will subscribe to TwistStamped msgs on /vel
@@ -1200,6 +1203,13 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       // operands get us corrected pcl-to-base_link
       // multiply by map-to-pcl on the left to get
       // map-to-base_link, which is the pose we are looking for
+      if (output_.x[2] > max_pose_delta_yaw_ ||
+          output_.x[2] < -max_pose_delta_yaw_) {
+        ROS_WARN("laser pose delta max yaw exceeded %f", output_.x[2]);
+        ld_free(curr_ldp_scan);
+        ld_free(ref_ldp_scan);
+        return 0;
+      }
       tf::Transform pose_delta =
         base_to_laser_ * pose_delta_laser * laser_to_base_;
       if (publish_debug_)
