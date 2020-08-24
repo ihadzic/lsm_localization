@@ -810,15 +810,15 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   tf::Transform pose;
 
   if (!have_map_) {
-    ROS_WARN("map not loaded, cannot process initial pose");
+    ROS_WARN_THROTTLE(30, "map not loaded, cannot process initial pose");
     return;
   }
   if (use_odom_ && !received_odom_) {
-    ROS_WARN("odom never received, cannot process initial pose");
+    ROS_WARN_THROTTLE(30, "odom never received, cannot process initial pose");
     return;
   }
   if (syncOdom(pose_msg->header.stamp) < 0.0) {
-    ROS_WARN("cannot sync odometry for initial pose timestamp");
+    ROS_WARN_THROTTLE(30, "cannot sync odometry for initial pose timestamp");
     return;
   }
   reference_odom_msg_ = current_odom_msg_;
