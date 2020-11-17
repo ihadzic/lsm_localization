@@ -915,7 +915,7 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
   int r = 0;
   double delta_t;
   if ((delta_t = syncOdom(scan_msg->header.stamp)) < 0.0) {
-    ROS_WARN("odometry sync failed, skipping scan");
+    ROS_WARN_THROTTLE(10, "odometry sync failed, skipping scan");
     return;
   }
   // run prediction once again here, so that we end up using
