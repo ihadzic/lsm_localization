@@ -527,6 +527,8 @@ double LaserScanMatcher::syncOdom(const ros::Time& time)
     tf::Quaternion q;
     // extrapolate because we don't have the second point
     double delta_t = (time - latest_before->header.stamp).toSec();
+    if (delta_t > MAX_ODOM_AGE)
+        return -1.0;
     o.pose.pose.position.x = latest_before->pose.pose.position.x +
         delta_t * latest_before->twist.twist.linear.x;
     o.pose.pose.position.y = latest_before->pose.pose.position.y +

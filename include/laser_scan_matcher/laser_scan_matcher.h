@@ -60,6 +60,7 @@
 #undef max
 
 #define MAX_ODOM_HISTORY 1024
+#define MAX_ODOM_AGE 2.0
 
 namespace scan_tools
 {
