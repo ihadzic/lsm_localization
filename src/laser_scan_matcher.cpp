@@ -60,6 +60,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   // **** init parameters
 
   initParams();
+  if (debug_csm_)
+    sm_debug_write(1);
 
   // **** state variables
 
@@ -337,6 +339,8 @@ void LaserScanMatcher::initParams()
     publish_measured_pose_ = false;
   if (!nh_private_.getParam ("publish_debug", publish_debug_))
     publish_debug_ = false;
+  if (!nh_private_.getParam ("debug_csm", debug_csm_))
+    debug_csm_ = false;
 
   if (!nh_private_.getParam("position_covariance", position_covariance_))
   {

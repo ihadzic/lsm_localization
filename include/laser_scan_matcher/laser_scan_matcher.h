@@ -136,6 +136,7 @@ class LaserScanMatcher
     bool publish_predicted_pose_;
     bool publish_measured_pose_;
     bool publish_debug_;
+    bool debug_csm_;
     std::vector<double> position_covariance_;
     std::vector<double> orientation_covariance_;
 
