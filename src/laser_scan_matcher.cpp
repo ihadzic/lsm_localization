@@ -1231,7 +1231,7 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
         // Sigma_odom is the covariance of odometry-delta
         // we need covariance in the map frame, so apply transforms
         setTransSigmaMatrix(
-          tf::getYaw((initial_pose_ * base_to_footprint_ * base_to_laser_).getRotation())
+          tf::getYaw((initial_pose_ * base_to_laser_).getRotation())
         );
         gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
                        Sigma_odom_, trans_sigma_, 0.0, I2_);
