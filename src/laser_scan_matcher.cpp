@@ -750,15 +750,14 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
         if (max_allowed_range_ > 0 && rho > max_allowed_range_) continue;
         // go to polar cordinates relative to the scanner heading
         // calculate incident angles for all four corners of the pixel
+
+        const double xs[] = {delta_x - .5*map_res_, delta_x + .5*map_res_};
+        const double ys[] = {delta_y - .5*map_res_, delta_y + .5*map_res_};
+
         std::vector<double> incident_angles;
-        beamAddIncidentAngle(delta_x - .5 * map_res_, delta_y - .5 * map_res_,
-                             laser_yaw, incident_angles);
-        beamAddIncidentAngle(delta_x + .5 * map_res_, delta_y - .5 * map_res_,
-                             laser_yaw, incident_angles);
-        beamAddIncidentAngle(delta_x - .5 * map_res_, delta_y + .5 * map_res_,
-                             laser_yaw, incident_angles);
-        beamAddIncidentAngle(delta_x + .5 * map_res_, delta_y + .5 * map_res_,
-                             laser_yaw, incident_angles);
+        for (auto x : xs)  for (auto y : ys)
+          beamAddIncidentAngle(x, y, laser_yaw, incident_angles);
+
         if (incident_angles.empty()) continue;
         double min_theta = *std::min_element(incident_angles.begin(),
                                              incident_angles.end());
@@ -773,15 +772,31 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
           delta_theta = 2 * M_PI - delta_theta;
         }
         int theta_index = (int)((start_theta - angle_min) / angle_inc) % num_angles;
-        for (int i = 0; i <= (int)(delta_theta / angle_inc); i++) {
+        int n_thetas = (int)(delta_theta / angle_inc) + 1;
+        for (int i = 0; i <= n_thetas; i++) {
+          const auto scan_theta = angle_min + theta_index*angle_inc;
+          const auto theta = laser_yaw + scan_theta;
+          const auto t = tan(theta);
+
+          // find rho for this point along the pixel's border
+          auto best_rho = range_max;
+          for (const auto x : xs) {
+            if (t*x >= ys[0] && t*x <= ys[1])
+              best_rho = std::min(best_rho, x/cos(theta));
+          }
+          for (const auto y : ys) {
+            if (y/t >= xs[0] && y/t <= xs[1])
+              best_rho = std::min(best_rho, y/sin(theta));
+          }
+
           // either no point ever recorded for this angle, so take it
           // or the current point is closer than previously recorded point
           if ((constructed_intensities_[theta_index] == 0.0 &&
                constructed_ranges_[theta_index] == 0.0) ||
-              rho < constructed_ranges_[theta_index]) {
+              best_rho < constructed_ranges_[theta_index]) {
             // intensity can be anything, range is whatever rho says
             constructed_intensities_[theta_index] = 100.0;
-            constructed_ranges_[theta_index] = rho;
+            constructed_ranges_[theta_index] = best_rho;
           }
           theta_index = (theta_index + 1) % num_angles;
         }
