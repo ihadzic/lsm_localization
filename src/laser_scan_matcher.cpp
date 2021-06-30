@@ -743,14 +743,9 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
         // add .5 to reference the middle of the pixel
         double delta_x = (x + .5) * map_res_ - laser_x;
         double delta_y = (y + .5) * map_res_ - laser_y;
-        double rho = sqrt(delta_x * delta_x + delta_y * delta_y);
-        // is pixel in range at all?
-        if (rho < range_min) continue;
-        if (rho > range_max) continue;
-        if (max_allowed_range_ > 0 && rho > max_allowed_range_) continue;
+
         // go to polar cordinates relative to the scanner heading
         // calculate incident angles for all four corners of the pixel
-
         const double xs[] = {delta_x - .5*map_res_, delta_x + .5*map_res_};
         const double ys[] = {delta_y - .5*map_res_, delta_y + .5*map_res_};
 
@@ -771,9 +766,10 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
           start_theta = max_theta;
           delta_theta = 2 * M_PI - delta_theta;
         }
-        int theta_index = (int)((start_theta - angle_min) / angle_inc) % num_angles;
+        int start_index = (int)((start_theta - angle_min) / angle_inc) % num_angles;
         int n_thetas = (int)(delta_theta / angle_inc) + 1;
         for (int i = 0; i <= n_thetas; i++) {
+          const auto theta_index = (start_index + i) % num_angles;
           const auto scan_theta = angle_min + theta_index*angle_inc;
           const auto theta = laser_yaw + scan_theta;
           const auto t = tan(theta);
@@ -789,6 +785,12 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
               best_rho = std::min(best_rho, y/sin(theta));
           }
 
+          // Check if beam is valid
+          if (best_rho < range_min || best_rho >= range_max)
+            continue;
+          if (max_allowed_range_ > 0 && best_rho > max_allowed_range_)
+            continue;
+
           // either no point ever recorded for this angle, so take it
           // or the current point is closer than previously recorded point
           if ((constructed_intensities_[theta_index] == 0.0 &&
@@ -798,7 +800,6 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
             constructed_intensities_[theta_index] = 100.0;
             constructed_ranges_[theta_index] = best_rho;
           }
-          theta_index = (theta_index + 1) % num_angles;
         }
       }
     }
