@@ -56,6 +56,8 @@
 #include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
+
+#include <laser_scan_matcher/scan_constructor.h>
 #undef min
 #undef max
 
@@ -165,10 +167,7 @@ class LaserScanMatcher
     bool received_imu_;
     bool received_odom_;
     bool received_vel_;
-    double map_res_;
-    std::vector<std::vector<int> > map_grid_;
-    int map_width_;
-    int map_height_;
+    ScanConstructor scan_constructor_;
     double observed_range_min_;
     double observed_range_max_;
     double observed_angle_min_;
