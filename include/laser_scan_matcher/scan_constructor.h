@@ -1,6 +1,8 @@
 #ifndef SCAN_CONSTRUCTOR_H
 #define SCAN_CONSTRUCTOR_H
 
+#include <laser_scan_matcher/segment_tree.h>
+
 #include <vector>
 #include <cmath>
 
@@ -51,7 +53,7 @@ class ScanConstructor
                          const scan_params_t &scan_params) const;
 
   private:
-    grid_t map_grid_;
+    SegmentTree segments_;
     map_params_t map_params_;
 };
 
