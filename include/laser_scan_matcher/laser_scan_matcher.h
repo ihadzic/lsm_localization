@@ -177,6 +177,7 @@ class LaserScanMatcher
     double observed_scan_time_;
     double observed_time_inc_;
     std::string observed_scan_frame_;
+    int skipped_poses_;
 
     tf::Transform predicted_pose_;
     tf::Transform measured_pose_;

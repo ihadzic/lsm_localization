@@ -53,7 +53,8 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   map_res_(0.0),
   map_width_(0),
   map_height_(0),
-  theta_odom_(0.0)
+  theta_odom_(0.0),
+  skipped_poses_(0)
 {
   ROS_INFO("Starting LaserScanMatcher");
 
@@ -1270,6 +1271,10 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       ld_free(ref_ldp_scan);
       return 1;
     } else {
+      skipped_poses_ += 1;
+      ROS_WARN_THROTTLE(10,"Variance of measured pose exceeded limit, "
+                            "not publishing. (%d poses skipped)",
+                        skipped_poses_);
       ld_free(curr_ldp_scan);
       ld_free(ref_ldp_scan);
       return 0;
