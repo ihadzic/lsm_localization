@@ -50,9 +50,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   received_vel_(false),
   have_map_(false),
   initialpose_valid_(false),
-  map_res_(0.0),
-  map_width_(0),
-  map_height_(0),
   theta_odom_(0.0),
   skipped_poses_(0)
 {
@@ -693,11 +690,14 @@ void LaserScanMatcher::beamAddIncidentAngle(double dx, double dy, double laser_y
 
 void LaserScanMatcher::constructScan(const ros::Time& time)
 {
-  double range_max = (initialized_) ? observed_range_max_ : default_range_max_;
-  double range_min = (initialized_) ? observed_range_min_ : default_range_min_;
-  double angle_max = (initialized_) ? observed_angle_max_ : default_angle_max_;
-  double angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
-  double angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
+  ScanConstructor::scan_params_t params;
+  params.range_max = (initialized_) ? observed_range_max_ : default_range_max_;
+  params.range_min = (initialized_) ? observed_range_min_ : default_range_min_;
+  params.angle_max = (initialized_) ? observed_angle_max_ : default_angle_max_;
+  params.angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
+  params.angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
+
+  params.max_allowed_range = max_allowed_range_;
 
   if (use_odom_) {
     predicted_pose_in_pcl_ = pcl2f_ * predicted_pose_;
@@ -711,118 +711,35 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
   ROS_DEBUG("%s: laser_x=%f, laser_y=%f laser_yaw (deg)=%f", __func__,
             laser_x, laser_y, 180.0 * laser_yaw / M_PI);
   ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
-            range_min, range_max, angle_min, angle_max, angle_inc);
-  // indices into the map for the region of interest
-  // x0, y0: lower-left corner index
-  // w, h  : width and height in indices
-  int x0 = (int)((laser_x - range_max) / map_res_);
-  if (x0 < 0) x0 = 0;
-  int y0 = (int)((laser_y - range_max) / map_res_);
-  if (y0 < 0) y0 = 0;
-  int w = 2 * (int)(range_max / map_res_);
-  int h = w;
-  if (x0 + w > map_width_) w = map_width_ - x0;
-  if (y0 + h > map_height_) h = map_height_ - y0;
+            params.range_min, params.range_max,
+            params.angle_min, params.angle_max, params.angle_inc);
 
-  // clear intensity array
-  int num_angles = (int)round((angle_max - angle_min + angle_inc) / angle_inc);
-  ROS_DEBUG("%s: x0=%d, y0=%d, w=%d, h=%d, num_angles=%d", __func__,
-            x0, y0, w, h, num_angles);
+  constructed_ranges_ =
+    scan_constructor_.constructScan(laser_x, laser_y, laser_yaw, params);
+
   constructed_intensities_.clear();
-  constructed_intensities_.reserve(num_angles);
-  constructed_ranges_.clear();
-  constructed_ranges_.reserve(num_angles);
-  for (int i = 0; i < num_angles; i++) {
-    constructed_intensities_.push_back(0.0);
-    constructed_ranges_.push_back(0.0);
-  }
-  // scan all points in the area of interest, convert to polar and
-  // remember the point if it is currently the closest for the given point
-  for (int y = y0; y < y0 + h; y++) {
-    for (int x = x0; x < x0 + w; x++) {
-      if (map_grid_[y][x] > map_occupancy_threshold_) {
-        // add .5 to reference the middle of the pixel
-        double delta_x = (x + .5) * map_res_ - laser_x;
-        double delta_y = (y + .5) * map_res_ - laser_y;
+  constructed_intensities_.reserve(constructed_intensities_.size());
 
-        // go to polar cordinates relative to the scanner heading
-        // calculate incident angles for all four corners of the pixel
-        const double xs[] = {delta_x - .5*map_res_, delta_x + .5*map_res_};
-        const double ys[] = {delta_y - .5*map_res_, delta_y + .5*map_res_};
+  for (const auto r : constructed_ranges_)
+    constructed_intensities_.push_back(r > 0.0? 100.0:0.0);
 
-        std::vector<double> incident_angles;
-        for (auto x : xs)  for (auto y : ys)
-          beamAddIncidentAngle(x, y, laser_yaw, incident_angles);
-
-        if (incident_angles.empty()) continue;
-        double min_theta = *std::min_element(incident_angles.begin(),
-                                             incident_angles.end());
-        double max_theta = *std::max_element(incident_angles.begin(),
-                                             incident_angles.end());
-        // calculate view angle with under which this pixel is visible
-        double delta_theta = max_theta - min_theta;
-        double start_theta = min_theta;
-        // handle wrap-around the circle
-        if (delta_theta > M_PI) {
-          start_theta = max_theta;
-          delta_theta = 2 * M_PI - delta_theta;
-        }
-        int start_index = (int)((start_theta - angle_min) / angle_inc) % num_angles;
-        int n_thetas = (int)(delta_theta / angle_inc) + 1;
-        for (int i = 0; i <= n_thetas; i++) {
-          const auto theta_index = (start_index + i) % num_angles;
-          const auto scan_theta = angle_min + theta_index*angle_inc;
-          const auto theta = laser_yaw + scan_theta;
-          const auto t = tan(theta);
-
-          // find rho for this point along the pixel's border
-          auto best_rho = range_max;
-          for (const auto x : xs) {
-            if (t*x >= ys[0] && t*x <= ys[1])
-              best_rho = std::min(best_rho, x/cos(theta));
-          }
-          for (const auto y : ys) {
-            if (y/t >= xs[0] && y/t <= xs[1])
-              best_rho = std::min(best_rho, y/sin(theta));
-          }
-
-          // Check if beam is valid
-          if (best_rho < range_min || best_rho >= range_max)
-            continue;
-          if (max_allowed_range_ > 0 && best_rho > max_allowed_range_)
-            continue;
-
-          // either no point ever recorded for this angle, so take it
-          // or the current point is closer than previously recorded point
-          if ((constructed_intensities_[theta_index] == 0.0 &&
-               constructed_ranges_[theta_index] == 0.0) ||
-              best_rho < constructed_ranges_[theta_index]) {
-            // intensity can be anything, range is whatever rho says
-            constructed_intensities_[theta_index] = 100.0;
-            constructed_ranges_[theta_index] = best_rho;
-          }
-        }
-      }
-    }
-  }
   if (publish_constructed_scan_) {
     sensor_msgs::LaserScan::Ptr scan_msg;
     scan_msg = boost::make_shared<sensor_msgs::LaserScan>();
-    scan_msg->range_min = range_min;
-    scan_msg->range_max = range_max;
-    scan_msg->angle_min = angle_min;
-    scan_msg->angle_max = angle_max;
-    scan_msg->angle_increment = angle_inc;
+    scan_msg->range_min = params.range_min;
+    scan_msg->range_max = params.range_max;
+    scan_msg->angle_min = params.angle_min;
+    scan_msg->angle_max = params.angle_max;
+    scan_msg->angle_increment = params.angle_inc;
     scan_msg->scan_time = (initialized_) ? observed_scan_time_ : default_scan_time_;
     scan_msg->time_increment = (initialized_) ? observed_time_inc_ : default_time_inc_;
     scan_msg->header.stamp = time;
     scan_msg->header.frame_id = (initialized_) ?  observed_scan_frame_ : default_scan_frame_;
-    scan_msg->ranges.resize(num_angles);
-    scan_msg->intensities.resize(num_angles);
-    for (int i = 0; i < num_angles; i++) {
-      scan_msg->ranges[i] = constructed_ranges_[i];
-      scan_msg->intensities[i] = constructed_intensities_[i];
-    }
+    scan_msg->ranges.assign(
+      constructed_ranges_.begin(), constructed_ranges_.end());
+    scan_msg->intensities.assign(
+      constructed_intensities_.begin(), constructed_intensities_.end());;
+
     constructed_scan_publisher_.publish(scan_msg);
   }
 }
@@ -876,9 +793,12 @@ void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map
 {
   boost::mutex::scoped_lock(mutex_);
 
-  map_res_ = map_msg->info.resolution;
-  map_width_ = map_msg->info.width;
-  map_height_ = map_msg->info.height;
+  ScanConstructor::map_params_t map_params;
+
+  map_params.map_occupancy_threshold = map_occupancy_threshold_;
+  map_params.map_res = map_msg->info.resolution;
+  map_params.map_width = map_msg->info.width;
+  map_params.map_height = map_msg->info.height;
   f2pcl_.setOrigin(tf::Vector3(map_msg->info.origin.position.x,
                                map_msg->info.origin.position.y,
                                map_msg->info.origin.position.z));
@@ -887,14 +807,21 @@ void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map
                                     map_msg->info.origin.orientation.z,
                                     map_msg->info.origin.orientation.w));
   pcl2f_ = f2pcl_.inverse();
-  map_grid_.resize(map_height_);
+
+  ScanConstructor::grid_t map_grid;
+  map_grid.resize(map_params.map_height);
+
   int i = 0;
-  for (auto row=map_grid_.begin(); row < map_grid_.end(); row++) {
-      row->resize(map_width_);
+  for (auto row=map_grid.begin(); row < map_grid.end(); row++) {
+      row->resize(map_params.map_width);
       for (auto element=row->begin(); element < row->end(); element++)
           *element = map_msg->data[i++];
   }
-  ROS_INFO("got map: %dx%d@%f", map_width_, map_height_, map_res_);
+  ROS_INFO("got map: %dx%d@%f",
+           map_params.map_width, map_params.map_height, map_params.map_res);
+
+  scan_constructor_ = ScanConstructor(std::move(map_grid), map_params);
+
   have_map_ = true;
 }
 
@@ -1463,7 +1390,7 @@ void LaserScanMatcher::constructedScanToLDP(LDP& ldp)
   ldp = ld_alloc_new(n);
 
   for (int i = 0; i < n; i++) {
-    if (constructed_intensities_[i] > 0.0) {
+    if (constructed_ranges_[i] > 0.0) {
       ldp->valid[i] = 1;
       ldp->readings[i] = constructed_ranges_[i];
     } else {
