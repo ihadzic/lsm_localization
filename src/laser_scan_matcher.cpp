@@ -93,31 +93,31 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   if (publish_constructed_scan_ && use_map_)
   {
     constructed_scan_publisher_ = nh_.advertise<sensor_msgs::LaserScan>(
-      "lsm/constructed_scan", 5);
+      "lsm_localization/constructed_scan", 5);
   }
 
   if (publish_pose_)
   {
     pose_publisher_  = nh_.advertise<geometry_msgs::Pose2D>(
-      "lsm/pose2D", 5);
+      "lsm_localization/pose2D", 5);
   }
 
   if (publish_pose_stamped_)
   {
     pose_stamped_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
-      "lsm/pose_stamped", 5);
+      "lsm_localization/pose_stamped", 5);
   }
 
   if (publish_pose_with_covariance_)
   {
     pose_with_covariance_publisher_  = nh_.advertise<geometry_msgs::PoseWithCovariance>(
-      "lsm/pose_with_covariance", 5);
+      "lsm_localization/pose_with_covariance", 5);
   }
 
   if (publish_pose_with_covariance_stamped_)
   {
     pose_with_covariance_stamped_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-      "lsm/pose", 5);
+      "lsm_localization/pose", 5);
   }
 
   if (publish_predicted_pose_)
@@ -128,7 +128,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
       ROS_WARN("publishing predicted pose requires 'use_odom' option");
     } else {
       predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-        "lsm/predicted_pose", 5);
+        "lsm_localization/predicted_pose", 5);
     }
   }
 
@@ -138,20 +138,20 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
       ROS_WARN("publishing measured pose requires 'do_compute_covariance' option");
     } else {
       measured_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-       "lsm/measured_pose", 5);
+       "lsm_localization/measured_pose", 5);
     }
   }
 
   if (publish_debug_)
   {
     debug_odom_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
-      "lsm/debug/odom_delta", 5);
+      "lsm_localization/debug/odom_delta", 5);
     debug_laser_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
-      "lsm/debug/laser_delta", 5);
+      "lsm_localization/debug/laser_delta", 5);
     debug_odom_reference_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
-      "lsm/debug/odom_reference", 5);
+      "lsm_localization/debug/odom_reference", 5);
     debug_odom_current_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
-      "lsm/debug/odom_current", 5);
+      "lsm_localization/debug/odom_current", 5);
   }
 
   // *** subscribers
