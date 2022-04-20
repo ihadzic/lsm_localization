@@ -1,3 +1,10 @@
+/*
+ * (c) 2021-2022 Nokia
+ *
+ * Licensed under the BSD 3-Clause "New" or "Revised" License
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <laser_scan_matcher/scan_constructor.h>
 
 #include <potracelib.h>

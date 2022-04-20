@@ -35,6 +35,12 @@
  *  on Robotics and Automation (ICRA), 2008
  */
 
+/* This package contains modifications that are copyright by Nokia
+ *
+ * Licensed under the BSD 3-Clause "New" or "Revised" License
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #ifndef LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 #define LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 
