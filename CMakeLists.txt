@@ -20,26 +20,26 @@ pkg_search_module(Eigen3 REQUIRED eigen3)
 
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES lsm_engine
+  LIBRARIES lsm_localization
   CATKIN_DEPENDS roscpp message_runtime std_msgs geometry_msgs sensor_msgs nav_msgs tf
 )
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${csm_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
 link_directories(${csm_LIBRARY_DIRS})
 
-add_library(lsm_engine src/laser_scan_matcher.cpp src/scan_constructor.cpp src/segment_tree.cpp)
-target_link_libraries(lsm_engine ${catkin_LIBRARIES} ${csm_LIBRARIES} ${potrace_LIBRARIES})
-add_dependencies(lsm_engine ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_library(lsm_localization src/laser_scan_matcher.cpp src/scan_constructor.cpp src/segment_tree.cpp)
+target_link_libraries(lsm_localization ${catkin_LIBRARIES} ${csm_LIBRARIES} ${potrace_LIBRARIES})
+add_dependencies(lsm_localization ${csm_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_executable(lsm_engine_node src/laser_scan_matcher_node.cpp)
-target_link_libraries(lsm_engine_node lsm_engine )
+add_executable(lsm_localization_node src/laser_scan_matcher_node.cpp)
+target_link_libraries(lsm_localization_node lsm_localization )
 
-install(TARGETS lsm_engine
+install(TARGETS lsm_localization
     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
     RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION})
 install(DIRECTORY include/laser_scan_matcher/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})
 
-install(TARGETS lsm_engine_node
+install(TARGETS lsm_localization_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})

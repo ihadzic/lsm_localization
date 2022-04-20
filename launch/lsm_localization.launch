@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-  <node pkg="lsm_localization" type="lsm_engine_node" name="lsm_localization" output="screen">
+  <node pkg="lsm_localization" type="lsm_localization_node" name="lsm_localization" output="screen">
     <remap from="scan" to="scan" />
     <param name="fixed_frame" value="map"/>
     <param name="publish_tf" value="false"/>
