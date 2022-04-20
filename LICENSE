@@ -1,0 +1,14 @@
+(C) 2022 Nokia
+
+Licensed under the BSD 3-Clause "New" or "Revised" License
+SPDX-License-Identifier: BSD-3-Clause
+
+Additional note:
+
+This package is using the code derived from laser_scan_matcher
+node (http://wiki.ros.org/laser_scan_matcher), but it is a completely
+new development with a new functionality, which in turns uses
+Canonical Scan Matcher (CSM) package (https://github.com/AndreaCensi/csm).
+
+Laser Scan Matcher is licensed under BSD 3-Clause License.
+CSM is LGPL licensed.
