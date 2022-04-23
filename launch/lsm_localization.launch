@@ -2,7 +2,7 @@
 <launch>
   <node pkg="lsm_localization" type="lsm_localization_node" name="lsm_localization" output="screen">
     <param name="fixed_frame" value="map"/>
-    <param name="publish_tf" value="false"/>
+    <param name="publish_base_tf" value="false"/>
     <param name="publish_pose" value="false"/>
     <param name="publish_pose_stamped" value="false"/>
     <param name="publish_pose_with_covariance_stamped" value="true"/>

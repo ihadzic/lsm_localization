@@ -277,8 +277,8 @@ void LaserScanMatcher::initParams()
   // **** How to publish the output?
   // tf (fixed_frame->base_frame),
   // pose message (pose of base frame in the fixed frame)
-  if (!nh_private_.getParam ("publish_tf", publish_tf_))
-    publish_tf_ = true;
+  if (!nh_private_.getParam ("publish_base_tf", publish_base_tf_))
+    publish_base_tf_ = true;
   if (!nh_private_.getParam ("publish_pose", publish_pose_))
     publish_pose_ = true;
   if (!nh_private_.getParam ("publish_constructed_scan", publish_constructed_scan_))
@@ -937,7 +937,7 @@ void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
     measured_pose_publisher_.publish(pose_with_covariance_stamped_msg);
   }
 
-  if (publish_tf_) {
+  if (publish_base_tf_) {
     tf::StampedTransform transform_msg (f2b_, time, fixed_frame_, base_frame_);
     tf_broadcaster_.sendTransform (transform_msg);
   }

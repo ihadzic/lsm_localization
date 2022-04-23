@@ -133,7 +133,7 @@ class LaserScanMatcher
     bool use_map_;
     bool initialpose_valid_;
     bool publish_constructed_scan_;
-    bool publish_tf_;
+    bool publish_base_tf_;
     bool publish_pose_;
     bool publish_pose_with_covariance_;
     bool publish_pose_stamped_;
