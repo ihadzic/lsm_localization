@@ -13,7 +13,6 @@
     <param name="use_map" value="true"/>
     <param name="publish_constructed_scan" value="true"/>
     <param name="use_vel" value="false"/>
-    <param name="do_compute_covariance" value="1"/>
     <param name="initialpose_topic_name" value="lsm/initialpose"/>
     <param name="max_angular_correction_deg" value="85.0" />
     <param name="max_linear_correction" value="2.0" />

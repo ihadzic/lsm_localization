@@ -128,24 +128,16 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 
   if (publish_predicted_pose_)
   {
-    if (!input_.do_compute_covariance) {
-      ROS_WARN("publishing predicted pose requires 'do_compute_covariance' option");
-    } else if (!use_odom_) {
+    if (!use_odom_) {
       ROS_WARN("publishing predicted pose requires 'use_odom' option");
     } else {
-      predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-        "lsm_localization/predicted_pose", 5);
+      predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("lsm_localization/predicted_pose", 5);
     }
   }
 
   if (publish_measured_pose_)
   {
-    if (!input_.do_compute_covariance) {
-      ROS_WARN("publishing measured pose requires 'do_compute_covariance' option");
-    } else {
-      measured_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
-       "lsm_localization/measured_pose", 5);
-    }
+    measured_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("lsm_localization/measured_pose", 5);
   }
 
   if (publish_debug_)
@@ -457,9 +449,8 @@ void LaserScanMatcher::initParams()
   if (!nh_private_.getParam ("outliers_remove_doubles", input_.outliers_remove_doubles))
     input_.outliers_remove_doubles = 1;
 
-  // If 1, computes the covariance of ICP using the method http://purl.org/censi/2006/icpcov
-  if (!nh_private_.getParam ("do_compute_covariance", input_.do_compute_covariance))
-    input_.do_compute_covariance = 0;
+  // Compute the covariance of ICP using the method http://purl.org/censi/2006/icpcov
+  input_.do_compute_covariance = 1;
 
   // Checks that find_correspondences_tricks gives the right answer
   if (!nh_private_.getParam ("debug_verify_tricks", input_.debug_verify_tricks))
@@ -920,7 +911,7 @@ void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transfo
 
 void LaserScanMatcher::doPublishOdomRate(const ros::Time& time)
 {
-  if (publish_predicted_pose_ && input_.do_compute_covariance && use_odom_) {
+  if (publish_predicted_pose_ && use_odom_) {
     geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
     pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
 
@@ -969,24 +960,13 @@ void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
     pose_with_covariance_msg = boost::make_shared<geometry_msgs::PoseWithCovariance>();
     tf::poseTFToMsg(f2b_, pose_with_covariance_msg->pose);
 
-    if (input_.do_compute_covariance) {
-      pose_with_covariance_msg->covariance = boost::assign::list_of
-        (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
-        (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
-        (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-        (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-        (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-        (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(output_.cov_x_m, 2, 2));
-    } else {
-      pose_with_covariance_msg->covariance = boost::assign::list_of
-        (static_cast<double>(position_covariance_[0])) (0)  (0)  (0)  (0)  (0)
-        (0)  (static_cast<double>(position_covariance_[1])) (0)  (0)  (0)  (0)
-        (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-        (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-        (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-        (0)  (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[2]));
-    }
-
+    pose_with_covariance_msg->covariance = boost::assign::list_of
+      (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
+      (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
+      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
+      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
+      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
+      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(output_.cov_x_m, 2, 2));      
     pose_with_covariance_publisher_.publish(pose_with_covariance_msg);
   }
   if (publish_pose_with_covariance_stamped_) {
@@ -999,28 +979,17 @@ void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
 
     tf::poseTFToMsg(f2b_, pose_with_covariance_stamped_msg->pose.pose);
 
-    if (input_.do_compute_covariance) {
-      pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
-        (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
-        (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
-        (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-        (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-        (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-        (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(output_.cov_x_m, 2, 2));
-    } else {
-      pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
-        (static_cast<double>(position_covariance_[0])) (0)  (0)  (0)  (0)  (0)
-        (0)  (static_cast<double>(position_covariance_[1])) (0)  (0)  (0)  (0)
-        (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-        (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-        (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-        (0)  (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[2]));
-    }
-
+    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
+      (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
+      (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
+      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
+      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
+      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
+      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(output_.cov_x_m, 2, 2));
     pose_with_covariance_stamped_publisher_.publish(pose_with_covariance_stamped_msg);
   }
 
-  if (publish_measured_pose_ && input_.do_compute_covariance) {
+  if (publish_measured_pose_) {
     geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
     pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
 
@@ -1146,18 +1115,16 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       throw e;
   }
   if (output_.valid) {
-    if (!input_.do_compute_covariance ||
-        (gsl_matrix_get(output_.cov_x_m, 0, 0) < max_variance_trans_ &&
-         gsl_matrix_get(output_.cov_x_m, 1, 1) < max_variance_trans_ &&
-         gsl_matrix_get(output_.cov_x_m, 2, 2) < max_variance_rot_)) {
+    if (gsl_matrix_get(output_.cov_x_m, 0, 0) < max_variance_trans_ &&
+	gsl_matrix_get(output_.cov_x_m, 1, 1) < max_variance_trans_ &&
+	gsl_matrix_get(output_.cov_x_m, 2, 2) < max_variance_rot_) {
       // the correction of the laser's position, in the laser frame
       ROS_DEBUG("found correlation transform: x=%f, y=%f, yaw=%f",
                output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
-      if (input_.do_compute_covariance)
-        ROS_DEBUG("variances: %f, %f, %f",
-                 gsl_matrix_get(output_.cov_x_m, 0, 0),
-                 gsl_matrix_get(output_.cov_x_m, 1, 1),
-                 gsl_matrix_get(output_.cov_x_m, 2, 2));
+      ROS_DEBUG("variances: %f, %f, %f",
+		gsl_matrix_get(output_.cov_x_m, 0, 0),
+		gsl_matrix_get(output_.cov_x_m, 1, 1),
+		gsl_matrix_get(output_.cov_x_m, 2, 2));
       tf::Transform pose_delta_laser;
       createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
                           pose_delta_laser);
@@ -1177,29 +1144,22 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
         base_to_laser_ * pose_delta_laser * laser_to_base_;
       if (publish_debug_)
         doPublishDebugTF(time, pose_delta, debug_laser_delta_publisher_, "");
-      if (input_.do_compute_covariance) {
-        // Sigma_odom is the covariance of odometry-delta
-        // we need covariance in the map frame, so apply transforms
-        setTransSigmaMatrix(
-          tf::getYaw((initial_pose_ * base_to_laser_).getRotation())
-        );
-        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
-                       Sigma_odom_, trans_sigma_, 0.0, I2_);
-        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
-                       I2_, 0.0, Sigma_odom_trans_);
-        gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
-                       output_.cov_x_m, trans_sigma_, 0.0, I2_);
-        gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
-                      I2_, 0.0, output_.cov_x_m);
-        if (!no_odom_fusing_) {
-          tf::Vector3 pv = fusePoses(pose_delta);
-          createTfFromXYTheta(pv.getX(), pv.getY(), pv.getZ(), f2b_);
-        } else {
-          f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
-        }
+      // Sigma_odom is the covariance of odometry-delta
+      // we need covariance in the map frame, so apply transforms
+      setTransSigmaMatrix(tf::getYaw((initial_pose_ * base_to_laser_).getRotation()));
+      gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
+		     Sigma_odom_, trans_sigma_, 0.0, I2_);
+      gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
+		     I2_, 0.0, Sigma_odom_trans_);
+      gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
+		     output_.cov_x_m, trans_sigma_, 0.0, I2_);
+      gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
+		     I2_, 0.0, output_.cov_x_m);
+      if (!no_odom_fusing_) {
+	tf::Vector3 pv = fusePoses(pose_delta);
+	createTfFromXYTheta(pv.getX(), pv.getY(), pv.getZ(), f2b_);
       } else {
-        // no-covariance case, just take measurement at face value
-        f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
+	f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
       }
       doPublishScanRate(time);
       double dur = (ros::WallTime::now() - start).toSec() * 1e3;
