@@ -52,7 +52,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   nh_private_(nh_private),
   initialized_(false),
   received_odom_(false),
-  received_vel_(false),
   have_map_(false),
   initialpose_valid_(false),
   theta_odom_(0.0),
@@ -173,15 +172,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
     odom_subscriber_ = nh_.subscribe(
       "/odom", 1, &LaserScanMatcher::odomCallback, this);
   }
-  if (use_vel_)
-  {
-    if (stamped_vel_)
-      vel_subscriber_ = nh_.subscribe(
-        "vel", 1, &LaserScanMatcher::velStmpCallback, this);
-    else
-      vel_subscriber_ = nh_.subscribe(
-        "vel", 1, &LaserScanMatcher::velCallback, this);
-  }
 }
 
 LaserScanMatcher::~LaserScanMatcher()
@@ -256,8 +246,6 @@ void LaserScanMatcher::initParams()
     use_odom_ = true;
   if (!nh_private_.getParam ("no_odom_fusing", no_odom_fusing_))
     no_odom_fusing_ = false;
-  if (!nh_private_.getParam ("use_vel", use_vel_))
-    use_vel_ = false;
 
   // **** Parameters that control map-to-scan matching
   // use_map must be true for map-to-scan matching to be used
@@ -293,12 +281,6 @@ void LaserScanMatcher::initParams()
 
   if (!nh_private_.getParam ("max_pose_delta_yaw", max_pose_delta_yaw_))
     max_pose_delta_yaw_ = 0.707; // sqrt(2)/2 or 45 degrees
-
-  // **** Are velocity input messages stamped?
-  // if false, will subscribe to Twist msgs on /vel
-  // if true, will subscribe to TwistStamped msgs on /vel
-  if (!nh_private_.getParam ("stamped_vel", stamped_vel_))
-    stamped_vel_ = false;
 
   // **** How to publish the output?
   // tf (fixed_frame->base_frame),
@@ -619,22 +601,6 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
   current_odom_msg_ = *odom_msg;
   doPredictPose(delta_t);
   doPublishOdomRate(odom_msg->header.stamp);
-}
-
-void LaserScanMatcher::velCallback(const geometry_msgs::Twist::ConstPtr& twist_msg)
-{
-  boost::mutex::scoped_lock(mutex_);
-  latest_vel_msg_ = *twist_msg;
-
-  received_vel_ = true;
-}
-
-void LaserScanMatcher::velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg)
-{
-  boost::mutex::scoped_lock(mutex_);
-  latest_vel_msg_ = twist_msg->twist;
-
-  received_vel_ = true;
 }
 
 void LaserScanMatcher::setTransSigmaMatrix(double yaw)
@@ -1413,18 +1379,6 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
   pr_ch_y = 0.0;
   pr_ch_a = 0.0;
 
-  // **** use velocity (for example from ab-filter)
-  if (use_vel_)
-  {
-    pr_ch_x = dt * latest_vel_msg_.linear.x;
-    pr_ch_y = dt * latest_vel_msg_.linear.y;
-    pr_ch_a = dt * latest_vel_msg_.angular.z;
-
-    if      (pr_ch_a >= M_PI) pr_ch_a -= 2.0 * M_PI;
-    else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
-  }
-
-  // **** use wheel odometry
   if (use_odom_ && received_odom_)
   {
     pr_ch_x = current_odom_msg_.pose.pose.position.x -

@@ -88,7 +88,6 @@ class LaserScanMatcher
     ros::Subscriber scan_subscriber_;
     ros::Subscriber map_subscriber_;
     ros::Subscriber odom_subscriber_;
-    ros::Subscriber vel_subscriber_;
     ros::Subscriber initialpose_subscriber_;
 
     tf::TransformListener    tf_listener_;
@@ -152,8 +151,6 @@ class LaserScanMatcher
 
     bool use_odom_;
     bool no_odom_fusing_;
-    bool use_vel_;
-    bool stamped_vel_;
 
     // **** state variables
 
@@ -162,7 +159,6 @@ class LaserScanMatcher
     bool initialized_;
     bool have_map_;
     bool received_odom_;
-    bool received_vel_;
     ScanConstructor scan_constructor_;
     double observed_range_min_;
     double observed_range_max_;
@@ -188,7 +184,6 @@ class LaserScanMatcher
 
     nav_msgs::Odometry current_odom_msg_;
     nav_msgs::Odometry reference_odom_msg_;
-    geometry_msgs::Twist latest_vel_msg_;
 
     std::vector<double> constructed_intensities_;
     std::vector<double> constructed_ranges_;
@@ -246,8 +241,6 @@ class LaserScanMatcher
 
     void scanCallback (const sensor_msgs::LaserScan::ConstPtr& scan_msg);
     void odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg);
-    void velCallback (const geometry_msgs::Twist::ConstPtr& twist_msg);
-    void velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg);
     bool getBaseToLaserTf (const std::string& frame_id);
     bool getBaseToFootprintTf (const std::string& frame_id);
 
