@@ -126,11 +126,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 
   if (publish_predicted_pose_)
   {
-    if (!use_odom_) {
-      ROS_WARN("publishing predicted pose requires 'use_odom' option");
-    } else {
-      predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("lsm_localization/predicted_pose", 5);
-    }
+    predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("lsm_localization/predicted_pose", 5);
   }
 
   if (publish_measured_pose_)
@@ -152,6 +148,9 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
 
   // *** subscribers
 
+  odom_subscriber_ = nh_.subscribe(
+    "/odom", 1, &LaserScanMatcher::odomCallback, this);
+
   initialpose_subscriber_ = nh_.subscribe(
     initialpose_topic_, 1, &LaserScanMatcher::initialposeCallback, this);
 
@@ -167,11 +166,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   scan_subscriber_ = nh_.subscribe(
     "scan", 1, &LaserScanMatcher::scanCallback, this);
 
-  if (use_odom_)
-  {
-    odom_subscriber_ = nh_.subscribe(
-      "/odom", 1, &LaserScanMatcher::odomCallback, this);
-  }
 }
 
 LaserScanMatcher::~LaserScanMatcher()
@@ -242,8 +236,6 @@ void LaserScanMatcher::initParams()
 
   kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
 
-  if (!nh_private_.getParam ("use_odom", use_odom_))
-    use_odom_ = true;
   if (!nh_private_.getParam ("no_odom_fusing", no_odom_fusing_))
     no_odom_fusing_ = false;
 
@@ -637,11 +629,7 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
 
   params.max_allowed_range = max_allowed_range_;
 
-  if (use_odom_) {
-    predicted_pose_in_pcl_ = pcl2f_ * predicted_pose_;
-  } else {
-    predicted_pose_in_pcl_ = pcl2f_ * initial_pose_;
-  }
+  predicted_pose_in_pcl_ = pcl2f_ * predicted_pose_;
   tf::Transform predicted_laser_pose_in_pcl = predicted_pose_in_pcl_ * base_to_laser_;
   double laser_x = predicted_laser_pose_in_pcl.getOrigin().getX();
   double laser_y = predicted_laser_pose_in_pcl.getOrigin().getY();
@@ -691,7 +679,7 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
     ROS_WARN_THROTTLE(30, "map not loaded, cannot process initial pose");
     return;
   }
-  if (use_odom_ && !received_odom_) {
+  if (!received_odom_) {
     ROS_WARN_THROTTLE(30, "odom never received, cannot process initial pose");
     return;
   }
@@ -852,7 +840,7 @@ void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transfo
 
 void LaserScanMatcher::doPublishOdomRate(const ros::Time& time)
 {
-  if (publish_predicted_pose_ && use_odom_) {
+  if (publish_predicted_pose_) {
     geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
     pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
 
@@ -1379,7 +1367,7 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
   pr_ch_y = 0.0;
   pr_ch_a = 0.0;
 
-  if (use_odom_ && received_odom_)
+  if (received_odom_)
   {
     pr_ch_x = current_odom_msg_.pose.pose.position.x -
               reference_odom_msg_.pose.pose.position.x;

@@ -8,9 +8,8 @@
     <param name="publish_pose_with_covariance_stamped" value="true"/>
     <param name="publish_predicted_pose" value="true"/>
     <param name="publish_measured_pose" value="true"/>
-    <param name="use_odom" value="true"/>
-    <param name="use_map" value="true"/>
     <param name="publish_constructed_scan" value="true"/>
+    <param name="use_map" value="true"/>
     <param name="initialpose_topic_name" value="lsm/initialpose"/>
     <param name="max_angular_correction_deg" value="85.0" />
     <param name="max_linear_correction" value="2.0" />
