@@ -51,7 +51,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   nh_(nh),
   nh_private_(nh_private),
   initialized_(false),
-  received_imu_(false),
   received_odom_(false),
   received_vel_(false),
   have_map_(false),
@@ -169,11 +168,6 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   scan_subscriber_ = nh_.subscribe(
     "scan", 1, &LaserScanMatcher::scanCallback, this);
 
-  if (use_imu_)
-  {
-    imu_subscriber_ = nh_.subscribe(
-      "imu/data", 1, &LaserScanMatcher::imuCallback, this);
-  }
   if (use_odom_)
   {
     odom_subscriber_ = nh_.subscribe(
@@ -258,14 +252,6 @@ void LaserScanMatcher::initParams()
 
   kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
 
-  // **** What predictions are available to speed up the ICP?
-  // 1) imu - [theta] from imu yaw angle - /imu topic
-  // 2) odom - [x, y, theta] from wheel odometry - /odom topic
-  // 3) vel - [x, y, theta] from velocity predictor - see alpha-beta predictors - /vel topic
-  // If more than one is enabled, priority is imu > odom > vel
-
-  if (!nh_private_.getParam ("use_imu", use_imu_))
-    use_imu_ = true;
   if (!nh_private_.getParam ("use_odom", use_odom_))
     use_odom_ = true;
   if (!nh_private_.getParam ("no_odom_fusing", no_odom_fusing_))
@@ -465,17 +451,6 @@ void LaserScanMatcher::initParams()
   // correspondence by 1/sigma^2
   if (!nh_private_.getParam ("use_sigma_weights", input_.use_sigma_weights))
     input_.use_sigma_weights = 0;
-}
-
-void LaserScanMatcher::imuCallback(const sensor_msgs::Imu::ConstPtr& imu_msg)
-{
-  boost::mutex::scoped_lock(mutex_);
-  latest_imu_msg_ = *imu_msg;
-  if (!received_imu_)
-  {
-    reference_imu_msg_ = *imu_msg;
-    received_imu_ = true;
-  }
 }
 
 nav_msgs::Odometry* LaserScanMatcher::latestOdomBefore(const ros::Time& time)
@@ -1469,17 +1444,6 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
     theta_odom_ = 0.0;
   }
 
-  // **** use imu
-  if (use_imu_ && received_imu_)
-  {
-    pr_ch_a = tf::getYaw(latest_imu_msg_.orientation) -
-              tf::getYaw(reference_imu_msg_.orientation);
-
-    if      (pr_ch_a >= M_PI) pr_ch_a -= 2.0 * M_PI;
-    else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
-
-    reference_imu_msg_ = latest_imu_msg_;
-  }
 }
 
 void LaserScanMatcher::createTfFromXYTheta(

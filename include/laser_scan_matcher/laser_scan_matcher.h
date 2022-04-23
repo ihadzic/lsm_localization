@@ -45,7 +45,6 @@
 #define LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 
 #include <ros/ros.h>
-#include <sensor_msgs/Imu.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose2D.h>
@@ -89,7 +88,6 @@ class LaserScanMatcher
     ros::Subscriber scan_subscriber_;
     ros::Subscriber map_subscriber_;
     ros::Subscriber odom_subscriber_;
-    ros::Subscriber imu_subscriber_;
     ros::Subscriber vel_subscriber_;
     ros::Subscriber initialpose_subscriber_;
 
@@ -152,13 +150,6 @@ class LaserScanMatcher
     double kf_dist_linear_sq_;
     double kf_dist_angular_;
 
-    // **** What predictions are available to speed up the ICP?
-    // 1) imu - [theta] from imu yaw angle - /imu topic
-    // 2) odom - [x, y, theta] from wheel odometry - /odom topic
-    // 3) velocity [vx, vy, vtheta], usually from ab-filter - /vel.
-    // If more than one is enabled, priority is imu > odom > velocity
-
-    bool use_imu_;
     bool use_odom_;
     bool no_odom_fusing_;
     bool use_vel_;
@@ -170,7 +161,6 @@ class LaserScanMatcher
 
     bool initialized_;
     bool have_map_;
-    bool received_imu_;
     bool received_odom_;
     bool received_vel_;
     ScanConstructor scan_constructor_;
@@ -196,8 +186,6 @@ class LaserScanMatcher
 
     ros::Time last_icp_time_;
 
-    sensor_msgs::Imu latest_imu_msg_;
-    sensor_msgs::Imu reference_imu_msg_;
     nav_msgs::Odometry current_odom_msg_;
     nav_msgs::Odometry reference_odom_msg_;
     geometry_msgs::Twist latest_vel_msg_;
@@ -258,7 +246,6 @@ class LaserScanMatcher
 
     void scanCallback (const sensor_msgs::LaserScan::ConstPtr& scan_msg);
     void odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg);
-    void imuCallback (const sensor_msgs::Imu::ConstPtr& imu_msg);
     void velCallback (const geometry_msgs::Twist::ConstPtr& twist_msg);
     void velStmpCallback(const geometry_msgs::TwistStamped::ConstPtr& twist_msg);
     bool getBaseToLaserTf (const std::string& frame_id);
