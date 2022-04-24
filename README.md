@@ -304,7 +304,7 @@ These parameters are: `kf_dist_linear`, `kf_dist_angular`,
 `use_corr_tricks`, `restart`, `restart_threshold_mean_error`,
 `restart_dt`, `restart_dtheta`, `clustering_theta`, `orientation_neighbourhood`,
 `use_point_to_line_distance`, `do_alpha_test`, `do_alpha_test_thresholdDeg`,
-`outliers_maxPerc`, outliers_adaptive_order`, `outliers_adaptive_mult`,
+`outliers_maxPerc`, `outliers_adaptive_order`, `outliers_adaptive_mult`,
 `do_visiblity_test`, `outliers_remove_doubles`, `debug_verify_tricks`,
 `use_ml_weights`, `use_sigma_weights`.
 
