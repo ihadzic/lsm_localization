@@ -215,12 +215,8 @@ void LaserScanMatcher::initParams()
     base_frame_ = "base_link";
   if (!nh_private_.getParam ("fixed_frame", fixed_frame_))
     fixed_frame_ = "world";
-  if (!nh_private_.getParam ("default_scan_frame", default_scan_frame_))
-    default_scan_frame_ = "base_scan";
-
   if (!nh_private_.getParam ("initialpose_topic_name", initialpose_topic_))
     initialpose_topic_ = "initialpose";
-
   if (!nh_private_.getParam("scan_downsample_rate", scan_downsample_rate_))
     scan_downsample_rate_ = 1;
   if (scan_downsample_rate_ <= 0)
@@ -250,27 +246,10 @@ void LaserScanMatcher::initParams()
   // would see
   if (!nh_private_.getParam("max_allowed_range", max_allowed_range_))
     max_allowed_range_ = -1;
-  if (!nh_private_.getParam ("default_range_min", default_range_min_))
-    default_range_min_ = 0.5;
-  if (!nh_private_.getParam ("default_range_max", default_range_min_))
-    default_range_max_ = 16.0;
-  if (!nh_private_.getParam ("default_angle_min", default_angle_min_))
-    default_angle_min_ = 0.0;
-  if (!nh_private_.getParam ("default_angle_inc", default_angle_inc_))
-    default_angle_inc_ = M_PI / 180.0;
-  if (!nh_private_.getParam ("default_angle_max", default_angle_max_))
-    default_angle_max_ = 2 * M_PI - default_angle_inc_;
-  if (!nh_private_.getParam ("default_scan_time", default_scan_time_))
-    default_scan_time_ = 0.2;
-  if (!nh_private_.getParam ("default_time_inc", default_time_inc_))
-    default_time_inc_ = default_scan_time_ * default_angle_inc_ / (default_angle_max_ - default_angle_min_);
-
   if (!nh_private_.getParam ("max_variance_trans", max_variance_trans_))
     max_variance_trans_ = 1e-5;
-
   if (!nh_private_.getParam ("max_variance_rot", max_variance_rot_))
     max_variance_rot_ = 1e-5;
-
   if (!nh_private_.getParam ("max_pose_delta_yaw", max_pose_delta_yaw_))
     max_pose_delta_yaw_ = 0.707; // sqrt(2)/2 or 45 degrees
 
@@ -609,11 +588,11 @@ void LaserScanMatcher::setTransSigmaMatrix(double yaw)
 void LaserScanMatcher::constructScan(const ros::Time& time)
 {
   ScanConstructor::scan_params_t params;
-  params.range_max = (initialized_) ? observed_range_max_ : default_range_max_;
-  params.range_min = (initialized_) ? observed_range_min_ : default_range_min_;
-  params.angle_max = (initialized_) ? observed_angle_max_ : default_angle_max_;
-  params.angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
-  params.angle_inc = (initialized_) ? observed_angle_inc_ : default_angle_inc_;
+  params.range_max = observed_range_max_;
+  params.range_min = observed_range_min_;
+  params.angle_max = observed_angle_max_;
+  params.angle_min = observed_angle_min_;
+  params.angle_inc = observed_angle_inc_;
 
   params.max_allowed_range = max_allowed_range_;
 
@@ -645,10 +624,10 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
     scan_msg->angle_min = params.angle_min;
     scan_msg->angle_max = params.angle_max;
     scan_msg->angle_increment = params.angle_inc;
-    scan_msg->scan_time = (initialized_) ? observed_scan_time_ : default_scan_time_;
-    scan_msg->time_increment = (initialized_) ? observed_time_inc_ : default_time_inc_;
+    scan_msg->scan_time = observed_scan_time_;
+    scan_msg->time_increment = observed_time_inc_;
     scan_msg->header.stamp = time;
-    scan_msg->header.frame_id = (initialized_) ?  observed_scan_frame_ : default_scan_frame_;
+    scan_msg->header.frame_id = observed_scan_frame_;
     scan_msg->ranges.assign(
       constructed_ranges_.begin(), constructed_ranges_.end());
     scan_msg->intensities.assign(
