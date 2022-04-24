@@ -606,21 +606,6 @@ void LaserScanMatcher::setTransSigmaMatrix(double yaw)
   gsl_matrix_set(trans_sigma_, 1, 1, cos(yaw));
 }
 
-void LaserScanMatcher::beamAddIncidentAngle(double dx, double dy, double laser_yaw, std::vector<double>& angles)
-{
-  double theta = atan2(dy, dx) - laser_yaw;
-  double angle_max = (initialized_) ? observed_angle_max_ : default_angle_max_;
-  double angle_min = (initialized_) ? observed_angle_min_ : default_angle_min_;
-  // ensure that theta is in -pi to pi range
-  while (theta < -M_PI) theta += 2 * M_PI;
-  while (theta >= M_PI) theta -= 2 * M_PI;
-  // if LIDAR range uses only positive angles, make the angle compatible with it
-  if (angle_min >= 0 && theta < 0.0) theta += 2 * M_PI;
-  if (theta < angle_min) return;
-  if (theta > angle_max) return;
-  angles.push_back(theta);
-}
-
 void LaserScanMatcher::constructScan(const ros::Time& time)
 {
   ScanConstructor::scan_params_t params;
