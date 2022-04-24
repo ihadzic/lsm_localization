@@ -279,6 +279,8 @@ void LaserScanMatcher::initParams()
   // pose message (pose of base frame in the fixed frame)
   if (!nh_private_.getParam ("publish_base_tf", publish_base_tf_))
     publish_base_tf_ = true;
+  if (!nh_private_.getParam ("publish_odom_tf", publish_odom_tf_))
+    publish_odom_tf_ = true;
   if (!nh_private_.getParam ("publish_pose", publish_pose_))
     publish_pose_ = true;
   if (!nh_private_.getParam ("publish_constructed_scan", publish_constructed_scan_))
@@ -585,6 +587,7 @@ void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg
     gsl_matrix_set_zero(Sigma_odom_);
     theta_odom_ = 0.0;
     received_odom_ = true;
+    odom_frame_ = odom_msg->header.frame_id;
     return;
   }
 
@@ -939,6 +942,18 @@ void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
 
   if (publish_base_tf_) {
     tf::StampedTransform transform_msg (f2b_, time, fixed_frame_, base_frame_);
+    tf_broadcaster_.sendTransform (transform_msg);
+  }
+
+  if (publish_odom_tf_) {
+    tf::Transform current_odom_tf;
+    tf::Transform m2o;
+    createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
+			current_odom_msg_.pose.pose.position.y,
+			tf::getYaw(current_odom_msg_.pose.pose.orientation),
+			current_odom_tf);
+    m2o = f2b_ * (current_odom_tf * footprint_to_base_).inverse();
+    tf::StampedTransform transform_msg (m2o, time, fixed_frame_, odom_frame_);
     tf_broadcaster_.sendTransform (transform_msg);
   }
 

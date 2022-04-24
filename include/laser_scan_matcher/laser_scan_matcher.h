@@ -115,6 +115,7 @@ class LaserScanMatcher
 
     std::string base_frame_;
     std::string fixed_frame_;
+    std::string odom_frame_;
     std::string default_scan_frame_;
     std::string initialpose_topic_;
     int scan_downsample_rate_;
@@ -134,6 +135,7 @@ class LaserScanMatcher
     bool initialpose_valid_;
     bool publish_constructed_scan_;
     bool publish_base_tf_;
+    bool publish_odom_tf_;
     bool publish_pose_;
     bool publish_pose_with_covariance_;
     bool publish_pose_stamped_;
