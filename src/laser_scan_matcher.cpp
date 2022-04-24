@@ -251,13 +251,13 @@ void LaserScanMatcher::initParams()
   if (!nh_private_.getParam ("max_variance_rot", max_variance_rot_))
     max_variance_rot_ = 1e-5;
   if (!nh_private_.getParam ("max_pose_delta_yaw", max_pose_delta_yaw_))
-    max_pose_delta_yaw_ = 0.707; // sqrt(2)/2 or 45 degrees
+    max_pose_delta_yaw_ = 0.785; // 45 degrees
 
   // **** How to publish the output?
   // tf (fixed_frame->base_frame),
   // pose message (pose of base frame in the fixed frame)
   if (!nh_private_.getParam ("publish_base_tf", publish_base_tf_))
-    publish_base_tf_ = true;
+    publish_base_tf_ = false;
   if (!nh_private_.getParam ("publish_odom_tf", publish_odom_tf_))
     publish_odom_tf_ = true;
   if (!nh_private_.getParam ("publish_pose", publish_pose_))
