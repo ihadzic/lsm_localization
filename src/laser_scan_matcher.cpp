@@ -269,7 +269,7 @@ void LaserScanMatcher::initParams()
   if (!nh_private_.getParam ("publish_pose_with_covariance", publish_pose_with_covariance_))
     publish_pose_with_covariance_ = false;
   if (!nh_private_.getParam ("publish_pose_with_covariance_stamped", publish_pose_with_covariance_stamped_))
-    publish_pose_with_covariance_stamped_ = false;
+    publish_pose_with_covariance_stamped_ = true;
   if (!nh_private_.getParam ("publish_predicted_pose", publish_predicted_pose_))
     publish_predicted_pose_ = false;
   if (!nh_private_.getParam ("publish_measured_pose", publish_measured_pose_))
