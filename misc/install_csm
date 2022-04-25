@@ -1,0 +1,37 @@
+#!/bin/bash
+ROS_RELEASE=$1
+if [ -z "$ROS_RELEASE" ]; then
+    echo "usage: install_csm <your ROS release (melodic, noetic..)>"
+    exit 1
+fi
+repo_url="https://github.com/AndreaCensi/csm.git"
+build_dir="csm_$(uuidgen)"
+mkdir -p "/tmp/$build_dir/src"
+cd "/tmp/$build_dir/src"
+echo "cloning CSM source code"
+git clone "$repo_url"
+if [ $? -ne 0 ]; then
+    echo "failed to clone CSM repository"
+    exit 1
+fi
+cd "/tmp/$build_dir"
+ros_dir="/opt/ros/$ROS_RELEASE"
+source "$ros_dir/setup.bash"
+if [ $? -ne 0 ]; then
+    echo "failed to set up ROS environment"
+    exit 1
+fi
+echo "compiling CSM"
+catkin_make_isolated -DCMAKE_BUILD=Release -DCMAKE_INSTALL_PREFIX="$ros_dir"
+if [ $? -ne 0 ]; then
+    echo "failed to compile CSM"
+    exit 1
+fi
+echo "installing CSM"
+catkin_make_isolated --install -DCMAKE_BUILD=Release -DCMAKE_INSTALL_PREFIX="$ros_dir"
+if [ $? -ne 0 ]; then
+    echo "failed to install CSM"
+    exit 1
+fi
+echo "CSM installed successfully"
+exit 0

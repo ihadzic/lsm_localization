@@ -20,7 +20,22 @@ pose is calculated using the PL-ICP algorithm from
 derived from the [Laser Scan Matcher](http://wiki.ros.org/laser_scan_matcher)
 package.
 
-# Usage
+## Installation
+
+To install the package, clone this repository into your workspace
+and run `catkin_make`. You need CSM library which you can build from
+source using the script provided in this `misc` directory of this
+repository
+
+```
+cd misc
+sudo ./install_csm <ROS distro>
+```
+
+Parameter `<ROS distro>` above is the ROS distribution you are
+building for (e.g. melodic, noetic).
+
+## Usage
 
 You can start the LSM Localization node using the launch files provided
 in this repository. The stand-alone `lsm_localization.launch` has a sane
