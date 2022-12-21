@@ -43,3 +43,6 @@ install(DIRECTORY include/laser_scan_matcher/
 
 install(TARGETS lsm_localization_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+install(DIRECTORY launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
