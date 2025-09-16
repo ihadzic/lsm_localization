@@ -117,11 +117,10 @@ class LaserScanMatcher : public rclcpp::Node
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr measured_pose_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr constructed_scan_publisher_;
 
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr debug_odom_delta_publisher_;
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr debug_odom_reference_publisher_;
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr debug_odom_current_publisher_;
-
-    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr debug_laser_delta_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr debug_odom_delta_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr debug_odom_reference_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr debug_odom_current_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr debug_laser_delta_publisher_;
 
 
     // **** parameters
@@ -241,7 +240,7 @@ class LaserScanMatcher : public rclcpp::Node
     void doPublishDebugTF(
       const rclcpp::Time& time,
       const tf2::Transform& transform,
-      const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr& publisher,
+      const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr& publisher,
       const std::string& frame
     );
 

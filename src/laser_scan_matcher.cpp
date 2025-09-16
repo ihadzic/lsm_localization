@@ -138,13 +138,13 @@ LaserScanMatcher::LaserScanMatcher() : rclcpp::Node("laser_scan_matcher"),
 
   if (publish_debug_)
   {
-    debug_odom_delta_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(
+    debug_odom_delta_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
       "lsm_localization/debug/odom_delta", 5);
-    debug_laser_delta_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
+    debug_laser_delta_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
       "lsm_localization/debug/laser_delta", 5);
-    debug_odom_reference_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(
+    debug_odom_reference_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
       "lsm_localization/debug/odom_reference", 5);
-    debug_odom_current_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(
+    debug_odom_current_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
       "lsm_localization/debug/odom_current", 5);
   }
 
@@ -557,13 +557,11 @@ void LaserScanMatcher::doPredictPose(double delta_t)
   // Sigma_odom = delta_t * B_odom * I1 + 1 * Sigma_odom (use beta = 1.0 to accumulate)
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, delta_t, B_odom_, I1_, 1.0, Sigma_odom_);
 
-  /* RKD
   if (publish_debug_) {
     doPublishDebugTF(current_odom_msg_.header.stamp, delta_odom_tf, debug_odom_delta_publisher_, "");
     doPublishDebugTF(current_odom_msg_.header.stamp, reference_odom_tf, debug_odom_reference_publisher_, "odom");
     doPublishDebugTF(current_odom_msg_.header.stamp, current_odom_tf, debug_odom_current_publisher_, "odom");
   }
-  */
 }
 
 void LaserScanMatcher::odomCallback(const nav_msgs::msg::Odometry::SharedPtr& odom_msg)
@@ -830,6 +828,21 @@ void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transfo
 }
 */
 
+void LaserScanMatcher::doPublishDebugTF(
+    const rclcpp::Time& time,
+    const tf2::Transform& transform,
+    const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr& publisher,
+    const std::string& frame
+)
+{
+    auto pose_stamped_msg = std::make_shared<geometry_msgs::msg::PoseStamped>();
+    
+    pose_stamped_msg = std::make_shared<geometry_msgs::msg::PoseStamped>(
+        transformToPoseStamped(transform, frame, time));
+
+    publisher->publish(*pose_stamped_msg);
+}
+
 void LaserScanMatcher::doPublishOdomRate(const rclcpp::Time& time)
 {
   if (publish_predicted_pose_) {
@@ -1071,10 +1084,8 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       tf2::Transform pose_delta =
         base_to_laser_ * pose_delta_laser * laser_to_base_;
       
-      /* RKD
       if (publish_debug_)
         doPublishDebugTF(time, pose_delta, debug_laser_delta_publisher_, "");
-      */
 
       // Sigma_odom is the covariance of odometry-delta
       // we need covariance in the map frame, so apply transforms
