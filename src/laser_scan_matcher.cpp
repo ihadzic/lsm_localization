@@ -816,18 +816,6 @@ void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr
   }
 }
 
-/* RKD
-void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transform& transform, const ros::Publisher &publisher, const std::string& frame)
-{
-  geometry_msgs::PoseStamped::Ptr pose_stamped_msg;
-  pose_stamped_msg = boost::make_shared<geometry_msgs::PoseStamped>();
-  pose_stamped_msg->header.stamp = time;
-  pose_stamped_msg->header.frame_id = frame;
-  tf::poseTFToMsg(transform, pose_stamped_msg->pose);
-  publisher.publish(pose_stamped_msg);
-}
-*/
-
 void LaserScanMatcher::doPublishDebugTF(
     const rclcpp::Time& time,
     const tf2::Transform& transform,
