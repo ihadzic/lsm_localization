@@ -41,15 +41,13 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <mutex>
 #include <laser_scan_matcher/laser_scan_matcher.h>
-#include <boost/assign.hpp>
 
 namespace scan_tools
 {
 
-LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_private):
-  nh_(nh),
-  nh_private_(nh_private),
+LaserScanMatcher::LaserScanMatcher() : rclcpp::Node("laser_scan_matcher"),
   initialized_(false),
   received_odom_(false),
   have_map_(false),
@@ -57,7 +55,7 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   theta_odom_(0.0),
   skipped_poses_(0)
 {
-  ROS_INFO("Starting LaserScanMatcher");
+  RCLCPP_INFO(this->get_logger(), "Starting LaserScanMatcher");
 
   // **** init parameters
 
@@ -93,84 +91,97 @@ LaserScanMatcher::LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_privat
   predicted_pose_.setIdentity();
   odom_history_.resize(MAX_ODOM_HISTORY);
 
+  tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
   // **** publishers
   if (publish_constructed_scan_ && use_map_)
   {
-    constructed_scan_publisher_ = nh_.advertise<sensor_msgs::LaserScan>(
+    constructed_scan_publisher_ = this->create_publisher<sensor_msgs::msg::LaserScan>(
       "lsm_localization/constructed_scan", 5);
   }
 
   if (publish_pose_)
   {
-    pose_publisher_  = nh_.advertise<geometry_msgs::Pose2D>(
+    pose_publisher_  = this->create_publisher<geometry_msgs::msg::Pose2D>(
       "lsm_localization/pose2D", 5);
   }
 
   if (publish_pose_stamped_)
   {
-    pose_stamped_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+    pose_stamped_publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(
       "lsm_localization/pose_stamped", 5);
   }
 
   if (publish_pose_with_covariance_)
   {
-    pose_with_covariance_publisher_  = nh_.advertise<geometry_msgs::PoseWithCovariance>(
+    pose_with_covariance_publisher_  = this->create_publisher<geometry_msgs::msg::PoseWithCovariance>(
       "lsm_localization/pose_with_covariance", 5);
   }
 
   if (publish_pose_with_covariance_stamped_)
   {
-    pose_with_covariance_stamped_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(
+    pose_with_covariance_stamped_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
       "lsm_localization/pose", 5);
   }
 
   if (publish_predicted_pose_)
   {
-    predicted_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("lsm_localization/predicted_pose", 5);
+    predicted_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      "lsm_localization/predicted_pose", 5);
   }
 
   if (publish_measured_pose_)
   {
-    measured_pose_publisher_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("lsm_localization/measured_pose", 5);
+    measured_pose_publisher_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("lsm_localization/measured_pose", 5);
   }
 
   if (publish_debug_)
   {
-    debug_odom_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+    debug_odom_delta_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(
       "lsm_localization/debug/odom_delta", 5);
-    debug_laser_delta_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+    debug_laser_delta_publisher_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
       "lsm_localization/debug/laser_delta", 5);
-    debug_odom_reference_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+    debug_odom_reference_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(
       "lsm_localization/debug/odom_reference", 5);
-    debug_odom_current_publisher_ = nh_.advertise<geometry_msgs::PoseStamped>(
+    debug_odom_current_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>(
       "lsm_localization/debug/odom_current", 5);
   }
 
   // *** subscribers
 
-  odom_subscriber_ = nh_.subscribe(
-    "/odom", 1, &LaserScanMatcher::odomCallback, this);
+  odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>( "odom", 10,
+      [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+        this->odomCallback(msg);
+  });
 
-  initialpose_subscriber_ = nh_.subscribe(
-    initialpose_topic_, 1, &LaserScanMatcher::initialposeCallback, this);
+  initialpose_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>( "pose_topic", 10,
+      [this](const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
+        this->initialposeCallback(msg);
+  });
+
 
   if (use_map_)
   {
-    ROS_INFO("using map-based matching");
-    map_subscriber_ = nh_.subscribe(
-      "map", 1, &LaserScanMatcher::mapCallback, this);
+    RCLCPP_INFO(this->get_logger(), "using map-based matching");
+    map_subscriber_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>( "map", 1,
+      [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
+        this->mapCallback(msg);
+    });
+
   }
   else
-    ROS_INFO("using frame-to-frame matching");
+    RCLCPP_INFO(this->get_logger(), "using frame-to-frame matching");
 
-  scan_subscriber_ = nh_.subscribe(
-    "scan", 1, &LaserScanMatcher::scanCallback, this);
-
+  scan_subscriber_ = this->create_subscription<sensor_msgs::msg::LaserScan>( "scan", 1, 
+      [this](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+        this->scanCallback(msg);
+  });
 }
 
 LaserScanMatcher::~LaserScanMatcher()
 {
-  ROS_INFO("Destroying LaserScanMatcher");
+  RCLCPP_INFO(this->get_logger(), "Destroying LaserScanMatcher");
   gsl_matrix_free(Sigma_odom_);
   gsl_matrix_free(Sigma_odom_trans_);
   gsl_matrix_free(Sigma_measured_);
@@ -187,7 +198,7 @@ LaserScanMatcher::~LaserScanMatcher()
 
 void LaserScanMatcher::resetState()
 {
-  ROS_INFO("LaserScanMatcher state cleared");
+  RCLCPP_INFO(this->get_logger(), "LaserScanMatcher state cleared");
 
   // **** state variables
 
@@ -211,13 +222,13 @@ void LaserScanMatcher::resetState()
 
 void LaserScanMatcher::initParams()
 {
-  if (!nh_private_.getParam ("base_frame", base_frame_))
+  if (!this->get_parameter ("base_frame", base_frame_))
     base_frame_ = "base_link";
-  if (!nh_private_.getParam ("fixed_frame", fixed_frame_))
+  if (!this->get_parameter ("fixed_frame", fixed_frame_))
     fixed_frame_ = "world";
-  if (!nh_private_.getParam ("initialpose_topic_name", initialpose_topic_))
+  if (!this->get_parameter ("initialpose_topic_name", initialpose_topic_))
     initialpose_topic_ = "initialpose";
-  if (!nh_private_.getParam("scan_downsample_rate", scan_downsample_rate_))
+  if (!this->get_parameter("scan_downsample_rate", scan_downsample_rate_))
     scan_downsample_rate_ = 1;
   if (scan_downsample_rate_ <= 0)
     scan_downsample_rate_ = 1;
@@ -225,67 +236,67 @@ void LaserScanMatcher::initParams()
   // **** keyframe params: when to generate the keyframe scan
   // if either is set to 0, reduces to frame-to-frame matching
 
-  if (!nh_private_.getParam ("kf_dist_linear", kf_dist_linear_))
+  if (!this->get_parameter ("kf_dist_linear", kf_dist_linear_))
     kf_dist_linear_ = 0.10;
-  if (!nh_private_.getParam ("kf_dist_angular", kf_dist_angular_))
+  if (!this->get_parameter ("kf_dist_angular", kf_dist_angular_))
     kf_dist_angular_ = 10.0 * (M_PI / 180.0);
 
   kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
 
-  if (!nh_private_.getParam ("no_odom_fusing", no_odom_fusing_))
+  if (!this->get_parameter ("no_odom_fusing", no_odom_fusing_))
     no_odom_fusing_ = false;
 
   // **** Parameters that control map-to-scan matching
   // use_map must be true for map-to-scan matching to be used
   // other parameters control how the initial-pose scan is constructed
-  if (!nh_private_.getParam ("use_map", use_map_))
+  if (!this->get_parameter ("use_map", use_map_))
     use_map_ = true;
-  if (!nh_private_.getParam ("map_occupancy_threshold", map_occupancy_threshold_))
+  if (!this->get_parameter ("map_occupancy_threshold", map_occupancy_threshold_))
     map_occupancy_threshold_ = 10.0;
   // min and max range for constructing the scan that initial pose
   // would see
-  if (!nh_private_.getParam("max_allowed_range", max_allowed_range_))
+  if (!this->get_parameter("max_allowed_range", max_allowed_range_))
     max_allowed_range_ = -1;
-  if (!nh_private_.getParam ("max_variance_trans", max_variance_trans_))
+  if (!this->get_parameter ("max_variance_trans", max_variance_trans_))
     max_variance_trans_ = 1e-5;
-  if (!nh_private_.getParam ("max_variance_rot", max_variance_rot_))
+  if (!this->get_parameter ("max_variance_rot", max_variance_rot_))
     max_variance_rot_ = 1e-5;
-  if (!nh_private_.getParam ("max_pose_delta_yaw", max_pose_delta_yaw_))
+  if (!this->get_parameter ("max_pose_delta_yaw", max_pose_delta_yaw_))
     max_pose_delta_yaw_ = 0.785; // 45 degrees
 
   // **** How to publish the output?
   // tf (fixed_frame->base_frame),
   // pose message (pose of base frame in the fixed frame)
-  if (!nh_private_.getParam ("publish_base_tf", publish_base_tf_))
+  if (!this->get_parameter ("publish_base_tf", publish_base_tf_))
     publish_base_tf_ = false;
-  if (!nh_private_.getParam ("publish_odom_tf", publish_odom_tf_))
+  if (!this->get_parameter ("publish_odom_tf", publish_odom_tf_))
     publish_odom_tf_ = true;
-  if (!nh_private_.getParam ("publish_pose", publish_pose_))
+  if (!this->get_parameter ("publish_pose", publish_pose_))
     publish_pose_ = true;
-  if (!nh_private_.getParam ("publish_constructed_scan", publish_constructed_scan_))
+  if (!this->get_parameter ("publish_constructed_scan", publish_constructed_scan_))
     publish_constructed_scan_ = false;
-  if (!nh_private_.getParam ("publish_pose_stamped", publish_pose_stamped_))
+  if (!this->get_parameter ("publish_pose_stamped", publish_pose_stamped_))
     publish_pose_stamped_ = false;
-  if (!nh_private_.getParam ("publish_pose_with_covariance", publish_pose_with_covariance_))
+  if (!this->get_parameter ("publish_pose_with_covariance", publish_pose_with_covariance_))
     publish_pose_with_covariance_ = false;
-  if (!nh_private_.getParam ("publish_pose_with_covariance_stamped", publish_pose_with_covariance_stamped_))
+  if (!this->get_parameter ("publish_pose_with_covariance_stamped", publish_pose_with_covariance_stamped_))
     publish_pose_with_covariance_stamped_ = true;
-  if (!nh_private_.getParam ("publish_predicted_pose", publish_predicted_pose_))
+  if (!this->get_parameter ("publish_predicted_pose", publish_predicted_pose_))
     publish_predicted_pose_ = false;
-  if (!nh_private_.getParam ("publish_measured_pose", publish_measured_pose_))
+  if (!this->get_parameter ("publish_measured_pose", publish_measured_pose_))
     publish_measured_pose_ = false;
-  if (!nh_private_.getParam ("publish_debug", publish_debug_))
+  if (!this->get_parameter ("publish_debug", publish_debug_))
     publish_debug_ = false;
-  if (!nh_private_.getParam ("debug_csm", debug_csm_))
+  if (!this->get_parameter ("debug_csm", debug_csm_))
     debug_csm_ = false;
 
-  if (!nh_private_.getParam("position_covariance", position_covariance_))
+  if (!this->get_parameter("position_covariance", position_covariance_))
   {
     position_covariance_.resize(3);
     std::fill(position_covariance_.begin(), position_covariance_.end(), 1e-9);
   }
 
-  if (!nh_private_.getParam("orientation_covariance", orientation_covariance_))
+  if (!this->get_parameter("orientation_covariance", orientation_covariance_))
   {
     orientation_covariance_.resize(3);
     std::fill(orientation_covariance_.begin(), orientation_covariance_.end(), 1e-9);
@@ -293,76 +304,76 @@ void LaserScanMatcher::initParams()
   // **** CSM parameters - comments copied from algos.h (by Andrea Censi)
 
   // Maximum angular displacement between scans
-  if (!nh_private_.getParam ("max_angular_correction_deg", input_.max_angular_correction_deg))
+  if (!this->get_parameter ("max_angular_correction_deg", input_.max_angular_correction_deg))
     input_.max_angular_correction_deg = 45.0;
 
   // Maximum translation between scans (m)
-  if (!nh_private_.getParam ("max_linear_correction", input_.max_linear_correction))
+  if (!this->get_parameter ("max_linear_correction", input_.max_linear_correction))
     input_.max_linear_correction = 0.50;
 
   // Maximum ICP cycle iterations
-  if (!nh_private_.getParam ("max_iterations", input_.max_iterations))
+  if (!this->get_parameter ("max_iterations", input_.max_iterations))
     input_.max_iterations = 10;
 
   // A threshold for stopping (m)
-  if (!nh_private_.getParam ("epsilon_xy", input_.epsilon_xy))
+  if (!this->get_parameter ("epsilon_xy", input_.epsilon_xy))
     input_.epsilon_xy = 0.000001;
 
   // A threshold for stopping (rad)
-  if (!nh_private_.getParam ("epsilon_theta", input_.epsilon_theta))
+  if (!this->get_parameter ("epsilon_theta", input_.epsilon_theta))
     input_.epsilon_theta = 0.000001;
 
   // Maximum distance for a correspondence to be valid
-  if (!nh_private_.getParam ("max_correspondence_dist", input_.max_correspondence_dist))
+  if (!this->get_parameter ("max_correspondence_dist", input_.max_correspondence_dist))
     input_.max_correspondence_dist = 0.3;
 
   // Noise in the scan (m)
-  if (!nh_private_.getParam ("sigma", input_.sigma))
+  if (!this->get_parameter ("sigma", input_.sigma))
     input_.sigma = 0.010;
 
   // Use smart tricks for finding correspondences.
-  if (!nh_private_.getParam ("use_corr_tricks", input_.use_corr_tricks))
+  if (!this->get_parameter ("use_corr_tricks", input_.use_corr_tricks))
     input_.use_corr_tricks = 1;
 
   // Restart: Restart if error is over threshold
-  if (!nh_private_.getParam ("restart", input_.restart))
+  if (!this->get_parameter ("restart", input_.restart))
     input_.restart = 0;
 
   // Restart: Threshold for restarting
-  if (!nh_private_.getParam ("restart_threshold_mean_error", input_.restart_threshold_mean_error))
+  if (!this->get_parameter ("restart_threshold_mean_error", input_.restart_threshold_mean_error))
     input_.restart_threshold_mean_error = 0.01;
 
   // Restart: displacement for restarting. (m)
-  if (!nh_private_.getParam ("restart_dt", input_.restart_dt))
+  if (!this->get_parameter ("restart_dt", input_.restart_dt))
     input_.restart_dt = 1.0;
 
   // Restart: displacement for restarting. (rad)
-  if (!nh_private_.getParam ("restart_dtheta", input_.restart_dtheta))
+  if (!this->get_parameter ("restart_dtheta", input_.restart_dtheta))
     input_.restart_dtheta = 0.1;
 
   // Max distance for staying in the same clustering
-  if (!nh_private_.getParam ("clustering_threshold", input_.clustering_threshold))
+  if (!this->get_parameter ("clustering_threshold", input_.clustering_threshold))
     input_.clustering_threshold = 0.25;
 
   // Number of neighbour rays used to estimate the orientation
-  if (!nh_private_.getParam ("orientation_neighbourhood", input_.orientation_neighbourhood))
+  if (!this->get_parameter ("orientation_neighbourhood", input_.orientation_neighbourhood))
     input_.orientation_neighbourhood = 20;
 
   // If 0, it's vanilla ICP
-  if (!nh_private_.getParam ("use_point_to_line_distance", input_.use_point_to_line_distance))
+  if (!this->get_parameter ("use_point_to_line_distance", input_.use_point_to_line_distance))
     input_.use_point_to_line_distance = 1;
 
   // Discard correspondences based on the angles
-  if (!nh_private_.getParam ("do_alpha_test", input_.do_alpha_test))
+  if (!this->get_parameter ("do_alpha_test", input_.do_alpha_test))
     input_.do_alpha_test = 0;
 
   // Discard correspondences based on the angles - threshold angle, in degrees
-  if (!nh_private_.getParam ("do_alpha_test_thresholdDeg", input_.do_alpha_test_thresholdDeg))
+  if (!this->get_parameter ("do_alpha_test_thresholdDeg", input_.do_alpha_test_thresholdDeg))
     input_.do_alpha_test_thresholdDeg = 20.0;
 
   // Percentage of correspondences to consider: if 0.9,
   // always discard the top 10% of correspondences with more error
-  if (!nh_private_.getParam ("outliers_maxPerc", input_.outliers_maxPerc))
+  if (!this->get_parameter ("outliers_maxPerc", input_.outliers_maxPerc))
     input_.outliers_maxPerc = 0.90;
 
   // Parameters describing a simple adaptive algorithm for discarding.
@@ -373,57 +384,57 @@ void LaserScanMatcher::initParams()
   //     with the value of the error at the chosen percentile.
   //  4) Discard correspondences over the threshold.
   //  This is useful to be conservative; yet remove the biggest errors.
-  if (!nh_private_.getParam ("outliers_adaptive_order", input_.outliers_adaptive_order))
+  if (!this->get_parameter ("outliers_adaptive_order", input_.outliers_adaptive_order))
     input_.outliers_adaptive_order = 0.7;
 
-  if (!nh_private_.getParam ("outliers_adaptive_mult", input_.outliers_adaptive_mult))
+  if (!this->get_parameter ("outliers_adaptive_mult", input_.outliers_adaptive_mult))
     input_.outliers_adaptive_mult = 2.0;
 
   // If you already have a guess of the solution, you can compute the polar angle
   // of the points of one scan in the new position. If the polar angle is not a monotone
   // function of the readings index, it means that the surface is not visible in the
   // next position. If it is not visible, then we don't use it for matching.
-  if (!nh_private_.getParam ("do_visibility_test", input_.do_visibility_test))
+  if (!this->get_parameter ("do_visibility_test", input_.do_visibility_test))
     input_.do_visibility_test = 0;
 
   // no two points in laser_sens can have the same corr.
-  if (!nh_private_.getParam ("outliers_remove_doubles", input_.outliers_remove_doubles))
+  if (!this->get_parameter ("outliers_remove_doubles", input_.outliers_remove_doubles))
     input_.outliers_remove_doubles = 1;
 
   // Compute the covariance of ICP using the method http://purl.org/censi/2006/icpcov
   input_.do_compute_covariance = 1;
 
   // Checks that find_correspondences_tricks gives the right answer
-  if (!nh_private_.getParam ("debug_verify_tricks", input_.debug_verify_tricks))
+  if (!this->get_parameter ("debug_verify_tricks", input_.debug_verify_tricks))
     input_.debug_verify_tricks = 0;
 
   // If 1, the field 'true_alpha' (or 'alpha') in the first scan is used to compute the
   // incidence beta, and the factor (1/cos^2(beta)) used to weight the correspondence.");
-  if (!nh_private_.getParam ("use_ml_weights", input_.use_ml_weights))
+  if (!this->get_parameter ("use_ml_weights", input_.use_ml_weights))
     input_.use_ml_weights = 0;
 
   // If 1, the field 'readings_sigma' in the second scan is used to weight the
   // correspondence by 1/sigma^2
-  if (!nh_private_.getParam ("use_sigma_weights", input_.use_sigma_weights))
+  if (!this->get_parameter ("use_sigma_weights", input_.use_sigma_weights))
     input_.use_sigma_weights = 0;
 }
 
-nav_msgs::Odometry* LaserScanMatcher::latestOdomBefore(const ros::Time& time)
+nav_msgs::msg::Odometry* LaserScanMatcher::latestOdomBefore(const rclcpp::Time& time)
 {
     for (auto o=odom_history_.begin(); o < odom_history_.end(); o++) {
-        if (o->header.stamp <= time)
+        if (rclcpp::Time(o->header.stamp) <= time)
             return &(*o);
     }
     return NULL;
 }
 
-nav_msgs::Odometry* LaserScanMatcher::earliestOdomAfter(const ros::Time& time)
+nav_msgs::msg::Odometry* LaserScanMatcher::earliestOdomAfter(const rclcpp::Time& time)
 {
     for (auto o=odom_history_.begin(); o < odom_history_.end(); o++) {
-        if (o->header.stamp == time) {
+        if (rclcpp::Time(o->header.stamp) == time) {
             // found exact match, that's it!
             return &(*o);
-        } else if (o->header.stamp < time) {
+        } else if (rclcpp::Time(o->header.stamp) < time) {
             if (o==odom_history_.begin()) {
                 // beginning of queue is already before (i.e. nothing after)
                 return NULL;
@@ -436,26 +447,26 @@ nav_msgs::Odometry* LaserScanMatcher::earliestOdomAfter(const ros::Time& time)
     return &(*odom_history_.end());
 }
 
-void LaserScanMatcher::addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o)
+void LaserScanMatcher::addOdomToHistory(const nav_msgs::msg::Odometry::SharedPtr& o)
 {
     if (odom_history_.size() >= MAX_ODOM_HISTORY)
         odom_history_.pop_back();
     odom_history_.push_front(*o);
 }
 
-double LaserScanMatcher::syncOdom(const ros::Time& time)
+double LaserScanMatcher::syncOdom(const rclcpp::Time& time)
 {
-    nav_msgs::Odometry* latest_before = latestOdomBefore(time);
+    nav_msgs::msg::Odometry* latest_before = latestOdomBefore(time);
     if (!latest_before) {
-        ROS_WARN("missing latest odom before t=%.3f (is odom topic alive)",
-                 time.toSec());
+        RCLCPP_WARN(this->get_logger(), "missing latest odom before t=%.3f (is odom topic alive)",
+                 time.seconds());
         return -1.0;
     }
-    nav_msgs::Odometry o = *latest_before;
+    nav_msgs::msg::Odometry o = *latest_before;
     o.header.stamp = time;
-    tf::Quaternion q;
+    tf2::Quaternion q;
     // extrapolate because we don't have the second point
-    double delta_t = (time - latest_before->header.stamp).toSec();
+    double delta_t = (time - latest_before->header.stamp).seconds();
     if (delta_t > MAX_ODOM_AGE)
         return -1.0;
     o.pose.pose.position.x = latest_before->pose.pose.position.x +
@@ -464,11 +475,11 @@ double LaserScanMatcher::syncOdom(const ros::Time& time)
         delta_t * latest_before->twist.twist.linear.y;
     o.pose.pose.position.z = latest_before->pose.pose.position.z +
         delta_t * latest_before->twist.twist.linear.z;
-    tf::Quaternion delta_q;
+    tf2::Quaternion delta_q;
     delta_q.setRPY(delta_t * latest_before->twist.twist.angular.x,
                    delta_t * latest_before->twist.twist.angular.y,
                    delta_t * latest_before->twist.twist.angular.z);
-    tf::Quaternion qb(latest_before->pose.pose.orientation.x,
+    tf2::Quaternion qb(latest_before->pose.pose.orientation.x,
                       latest_before->pose.pose.orientation.y,
                       latest_before->pose.pose.orientation.z,
                       latest_before->pose.pose.orientation.w);
@@ -481,26 +492,29 @@ double LaserScanMatcher::syncOdom(const ros::Time& time)
     return delta_t;
 }
 
-double LaserScanMatcher::getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o)
+double LaserScanMatcher::getOdomDeltaT(const nav_msgs::msg::Odometry::SharedPtr& o)
 {
   if (odom_history_.empty())
     return -1.0;
-  return (o->header.stamp - odom_history_.front().header.stamp).toSec();
+
+  rclcpp::Time t1(o->header.stamp);
+  rclcpp::Time t0(odom_history_.front().header.stamp);
+  return (t1 - t0).seconds();
 }
 
 void LaserScanMatcher::doPredictPose(double delta_t)
 {
-  tf::Transform current_odom_tf;
-  tf::Transform reference_odom_tf;
+  tf2::Transform current_odom_tf;
+  tf2::Transform reference_odom_tf;
   createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
                       current_odom_msg_.pose.pose.position.y,
-                      tf::getYaw(current_odom_msg_.pose.pose.orientation),
+                      tf2::getYaw(current_odom_msg_.pose.pose.orientation),
                       current_odom_tf);
   createTfFromXYTheta(reference_odom_msg_.pose.pose.position.x,
                       reference_odom_msg_.pose.pose.position.y,
-                      tf::getYaw(reference_odom_msg_.pose.pose.orientation),
+                      tf2::getYaw(reference_odom_msg_.pose.pose.orientation),
                       reference_odom_tf);
-  tf::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
+  tf2::Transform delta_odom_tf = reference_odom_tf.inverse() * current_odom_tf;
 
   // apply calculated delta to the reference pose
   predicted_pose_ =
@@ -543,22 +557,24 @@ void LaserScanMatcher::doPredictPose(double delta_t)
   // Sigma_odom = delta_t * B_odom * I1 + 1 * Sigma_odom (use beta = 1.0 to accumulate)
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, delta_t, B_odom_, I1_, 1.0, Sigma_odom_);
 
+  /* RKD
   if (publish_debug_) {
     doPublishDebugTF(current_odom_msg_.header.stamp, delta_odom_tf, debug_odom_delta_publisher_, "");
     doPublishDebugTF(current_odom_msg_.header.stamp, reference_odom_tf, debug_odom_reference_publisher_, "odom");
     doPublishDebugTF(current_odom_msg_.header.stamp, current_odom_tf, debug_odom_current_publisher_, "odom");
   }
+  */
 }
 
-void LaserScanMatcher::odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg)
+void LaserScanMatcher::odomCallback(const nav_msgs::msg::Odometry::SharedPtr& odom_msg)
 {
-  boost::mutex::scoped_lock(mutex_);
+  std::scoped_lock lock(mutex_);
   double delta_t = getOdomDeltaT(odom_msg);
   addOdomToHistory(odom_msg);
   if (!received_odom_)
   {
     if (!getBaseToFootprintTf(odom_msg->child_frame_id)) {
-      ROS_WARN("skipping odom");
+      RCLCPP_WARN(this->get_logger(), "skipping odom");
       return;
     }
     reference_odom_msg_ = *odom_msg;
@@ -585,7 +601,7 @@ void LaserScanMatcher::setTransSigmaMatrix(double yaw)
   gsl_matrix_set(trans_sigma_, 1, 1, cos(yaw));
 }
 
-void LaserScanMatcher::constructScan(const ros::Time& time)
+void LaserScanMatcher::constructScan(const rclcpp::Time& time)
 {
   ScanConstructor::scan_params_t params;
   params.range_max = observed_range_max_;
@@ -597,13 +613,13 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
   params.max_allowed_range = max_allowed_range_;
 
   predicted_pose_in_pcl_ = pcl2f_ * predicted_pose_;
-  tf::Transform predicted_laser_pose_in_pcl = predicted_pose_in_pcl_ * base_to_laser_;
+  tf2::Transform predicted_laser_pose_in_pcl = predicted_pose_in_pcl_ * base_to_laser_;
   double laser_x = predicted_laser_pose_in_pcl.getOrigin().getX();
   double laser_y = predicted_laser_pose_in_pcl.getOrigin().getY();
-  double laser_yaw = tf::getYaw(predicted_laser_pose_in_pcl.getRotation());
-  ROS_DEBUG("%s: laser_x=%f, laser_y=%f laser_yaw (deg)=%f", __func__,
+  double laser_yaw = tf2::getYaw(predicted_laser_pose_in_pcl.getRotation());
+  RCLCPP_DEBUG(this->get_logger(), "%s: laser_x=%f, laser_y=%f laser_yaw (deg)=%f", __func__,
             laser_x, laser_y, 180.0 * laser_yaw / M_PI);
-  ROS_DEBUG("%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
+  RCLCPP_DEBUG(this->get_logger(), "%s: range=[%f,%f], angle=[%f,%f]@%f", __func__,
             params.range_min, params.range_max,
             params.angle_min, params.angle_max, params.angle_inc);
 
@@ -617,8 +633,8 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
     constructed_intensities_.push_back(r > 0.0? 100.0:0.0);
 
   if (publish_constructed_scan_) {
-    sensor_msgs::LaserScan::Ptr scan_msg;
-    scan_msg = boost::make_shared<sensor_msgs::LaserScan>();
+    sensor_msgs::msg::LaserScan::SharedPtr scan_msg;
+    scan_msg = std::make_shared<sensor_msgs::msg::LaserScan>();
     scan_msg->range_min = params.range_min;
     scan_msg->range_max = params.range_max;
     scan_msg->angle_min = params.angle_min;
@@ -633,25 +649,28 @@ void LaserScanMatcher::constructScan(const ros::Time& time)
     scan_msg->intensities.assign(
       constructed_intensities_.begin(), constructed_intensities_.end());;
 
-    constructed_scan_publisher_.publish(scan_msg);
+    constructed_scan_publisher_->publish(*scan_msg);
   }
 }
 
-void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg)
+void LaserScanMatcher::initialposeCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr& pose_msg)
 {
-  boost::mutex::scoped_lock(mutex_);
-  tf::Transform pose;
+  std::scoped_lock lock(mutex_);
+  tf2::Transform pose;
 
   if (!have_map_) {
-    ROS_WARN_THROTTLE(30, "map not loaded, cannot process initial pose");
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 30000,
+            "map not loaded, cannot process initial pose");
     return;
   }
   if (!received_odom_) {
-    ROS_WARN_THROTTLE(30, "odom never received, cannot process initial pose");
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 30000,
+            "odom never received, cannot process initial pose");
     return;
   }
   if (syncOdom(pose_msg->header.stamp) < 0.0) {
-    ROS_WARN_THROTTLE(30, "cannot sync odometry for initial pose timestamp");
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 30000,
+            "cannot sync odometry for initial pose timestamp");
     return;
   }
   reference_odom_msg_ = current_odom_msg_;
@@ -659,15 +678,15 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   theta_odom_ = 0.0;
 
   // convert the input pose (typically in 'map' frame into lsm_fixed frame)
-  pose.setOrigin(tf::Vector3(pose_msg->pose.pose.position.x,
+  pose.setOrigin(tf2::Vector3(pose_msg->pose.pose.position.x,
                              pose_msg->pose.pose.position.y,
                              pose_msg->pose.pose.position.z));
-  pose.setRotation(tf::Quaternion(pose_msg->pose.pose.orientation.x,
+  pose.setRotation(tf2::Quaternion(pose_msg->pose.pose.orientation.x,
                                   pose_msg->pose.pose.orientation.y,
                                   pose_msg->pose.pose.orientation.z,
                                   pose_msg->pose.pose.orientation.w));
   if (pose_msg->header.frame_id != fixed_frame_)
-    ROS_WARN("incorrect frame for initial pose: '%s' vs. '%s'",
+    RCLCPP_WARN(this->get_logger(), "incorrect frame for initial pose: '%s' vs. '%s'",
              pose_msg->header.frame_id.c_str(), fixed_frame_.c_str());
 
   // new initial pose came in, set the predicted pose to be equal
@@ -678,13 +697,13 @@ void LaserScanMatcher::initialposeCallback(const geometry_msgs::PoseWithCovarian
   // reflect the incoming initial pose if set up to publish
   // on compatible topic
   if (publish_pose_with_covariance_stamped_) {
-    pose_with_covariance_stamped_publisher_.publish(pose_msg);
+    pose_with_covariance_stamped_publisher_->publish(*pose_msg);
   }
 }
 
-void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map_msg)
+void LaserScanMatcher::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr& map_msg)
 {
-  boost::mutex::scoped_lock(mutex_);
+  std::scoped_lock lock(mutex_);
 
   ScanConstructor::map_params_t map_params;
 
@@ -692,10 +711,10 @@ void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map
   map_params.map_res = map_msg->info.resolution;
   map_params.map_width = map_msg->info.width;
   map_params.map_height = map_msg->info.height;
-  f2pcl_.setOrigin(tf::Vector3(map_msg->info.origin.position.x,
+  f2pcl_.setOrigin(tf2::Vector3(map_msg->info.origin.position.x,
                                map_msg->info.origin.position.y,
                                map_msg->info.origin.position.z));
-  f2pcl_.setRotation(tf::Quaternion(map_msg->info.origin.orientation.x,
+  f2pcl_.setRotation(tf2::Quaternion(map_msg->info.origin.orientation.x,
                                     map_msg->info.origin.orientation.y,
                                     map_msg->info.origin.orientation.z,
                                     map_msg->info.origin.orientation.w));
@@ -710,7 +729,7 @@ void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map
       for (auto element=row->begin(); element < row->end(); element++)
           *element = map_msg->data[i++];
   }
-  ROS_INFO("got map: %dx%d@%f",
+  RCLCPP_INFO(this->get_logger(), "got map: %dx%d@%f",
            map_params.map_width, map_params.map_height, map_params.map_res);
 
   scan_constructor_ = ScanConstructor(std::move(map_grid), map_params);
@@ -718,19 +737,19 @@ void LaserScanMatcher::mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map
   have_map_ = true;
 }
 
-void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& scan_msg)
+void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg)
 {
-  boost::mutex::scoped_lock(mutex_);
+  std::scoped_lock lock(mutex_);
 
   // **** if first scan, cache the tf from base to the scanner
   if (!initialized_)
   {
-    ROS_INFO("first scan observed, initializing");
+    RCLCPP_INFO(this->get_logger(), "first scan observed, initializing");
 
     // cache the static tf from base to laser
     if (!getBaseToLaserTf(scan_msg->header.frame_id))
     {
-      ROS_WARN("Skipping scan");
+      RCLCPP_WARN(this->get_logger(), "Skipping scan");
       return;
     }
     input_.min_reading = scan_msg->range_min;
@@ -749,14 +768,16 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
     initialized_ = true;
   }
 
-  if (scan_msg->header.seq % scan_downsample_rate_ != 0)
-    return;
-  ros::WallTime start = ros::WallTime::now();
+  // RKD replae with coutner for seq?
+  //if (scan_msg->header.seq % scan_downsample_rate_ != 0)
+  //    return;
+  rclcpp::Time start = this->get_clock()->now();
   LDP curr_ldp_scan;
   int r = 0;
   double delta_t;
   if ((delta_t = syncOdom(scan_msg->header.stamp)) < 0.0) {
-    ROS_WARN_THROTTLE(10, "odometry sync failed, skipping scan");
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 10000,
+            "odometry sync failed, skipping scan");
     return;
   }
   // run prediction once again here, so that we end up using
@@ -782,19 +803,22 @@ void LaserScanMatcher::scanCallback (const sensor_msgs::LaserScan::ConstPtr& sca
         theta_odom_ = 0.0;
       }
     } else
-      ROS_INFO_THROTTLE(2,
-        "initial pose not received yet, scan processing skipped"
-      );
+      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 20000,
+              "initial pose not received yet, scan processing skipped");
   } else {
     laserScanToLDP(scan_msg, curr_ldp_scan);
     r = processScan(curr_ldp_scan, scan_msg->header.stamp);
   }
   if (r) {
-    double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-    ROS_DEBUG("complete scan processing total duration: %.1f ms", dur);
+    rclcpp::Time end = this->get_clock()->now();
+    rclcpp::Duration duration = end - start;
+    int64_t duration_ms = duration.nanoseconds() / 1e6;
+
+    RCLCPP_DEBUG(this->get_logger(), ":complete scan processing total duration: %ld ms", static_cast<long>(duration_ms));
   }
 }
 
+/* RKD
 void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transform& transform, const ros::Publisher &publisher, const std::string& frame)
 {
   geometry_msgs::PoseStamped::Ptr pose_stamped_msg;
@@ -804,126 +828,122 @@ void LaserScanMatcher::doPublishDebugTF(const ros::Time& time, const tf::Transfo
   tf::poseTFToMsg(transform, pose_stamped_msg->pose);
   publisher.publish(pose_stamped_msg);
 }
+*/
 
-void LaserScanMatcher::doPublishOdomRate(const ros::Time& time)
+void LaserScanMatcher::doPublishOdomRate(const rclcpp::Time& time)
 {
   if (publish_predicted_pose_) {
-    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
-    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
+    geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr pose_with_covariance_stamped_msg;
+    pose_with_covariance_stamped_msg = std::make_shared<geometry_msgs::msg::PoseWithCovarianceStamped>();
 
     pose_with_covariance_stamped_msg->header.stamp    = time;
     pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
 
-    tf::poseTFToMsg(predicted_pose_, pose_with_covariance_stamped_msg->pose.pose);
+    pose_with_covariance_stamped_msg->pose.pose = transformToPose(predicted_pose_);
 
-    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
-      (gsl_matrix_get(Sigma_odom_trans_, 0, 0)) (gsl_matrix_get(Sigma_odom_trans_, 0, 1))  (0)  (0)  (0)  (0)
-      (gsl_matrix_get(Sigma_odom_trans_, 1, 0)) (gsl_matrix_get(Sigma_odom_trans_, 1, 1))  (0)  (0)  (0)  (0)
-      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(Sigma_odom_trans_, 2, 2));
-    predicted_pose_publisher_.publish(pose_with_covariance_stamped_msg);
+    pose_with_covariance_stamped_msg->pose.covariance = {
+      gsl_matrix_get(Sigma_odom_trans_, 0, 0), gsl_matrix_get(Sigma_odom_trans_, 0, 1), 0, 0, 0, 0,
+      gsl_matrix_get(Sigma_odom_trans_, 1, 0), gsl_matrix_get(Sigma_odom_trans_, 1, 1), 0, 0, 0, 0,
+      0, 0, static_cast<double>(position_covariance_[2]), 0, 0, 0,
+      0, 0, 0, static_cast<double>(orientation_covariance_[0]), 0, 0,
+      0, 0, 0, 0, static_cast<double>(orientation_covariance_[1]), 0,
+      0, 0, 0, 0, 0, gsl_matrix_get(Sigma_odom_trans_, 2, 2)
+    };
+    predicted_pose_publisher_->publish(*pose_with_covariance_stamped_msg);
   }
 }
 
-void LaserScanMatcher::doPublishScanRate(const ros::Time& time)
+void LaserScanMatcher::doPublishScanRate(const rclcpp::Time& time)
 {
   if (publish_pose_) {
     // unstamped Pose2D message
-    geometry_msgs::Pose2D::Ptr pose_msg;
-    pose_msg = boost::make_shared<geometry_msgs::Pose2D>();
+    auto pose_msg = std::make_shared<geometry_msgs::msg::Pose2D>();
     pose_msg->x = f2b_.getOrigin().getX();
     pose_msg->y = f2b_.getOrigin().getY();
-    pose_msg->theta = tf::getYaw(f2b_.getRotation());
-    pose_publisher_.publish(pose_msg);
+    pose_msg->theta = tf2::getYaw(f2b_.getRotation());
+    pose_publisher_->publish(*pose_msg);
   }
   if (publish_pose_stamped_) {
     // stamped Pose message
-    geometry_msgs::PoseStamped::Ptr pose_stamped_msg;
-    pose_stamped_msg = boost::make_shared<geometry_msgs::PoseStamped>();
+    auto pose_stamped_msg = std::make_shared<geometry_msgs::msg::PoseStamped>();
+    
+    pose_stamped_msg = std::make_shared<geometry_msgs::msg::PoseStamped>(
+        transformToPoseStamped(f2b_, fixed_frame_, time));
 
-    pose_stamped_msg->header.stamp    = time;
-    pose_stamped_msg->header.frame_id = fixed_frame_;
-
-    tf::poseTFToMsg(f2b_, pose_stamped_msg->pose);
-
-    pose_stamped_publisher_.publish(pose_stamped_msg);
+    pose_stamped_publisher_->publish(*pose_stamped_msg);
   }
   if (publish_pose_with_covariance_) {
     // unstamped PoseWithCovariance message
-    geometry_msgs::PoseWithCovariance::Ptr pose_with_covariance_msg;
-    pose_with_covariance_msg = boost::make_shared<geometry_msgs::PoseWithCovariance>();
-    tf::poseTFToMsg(f2b_, pose_with_covariance_msg->pose);
+    auto pose_with_covariance_msg = std::make_shared<geometry_msgs::msg::PoseWithCovariance>();
 
-    pose_with_covariance_msg->covariance = boost::assign::list_of
-      (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
-      (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
-      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(output_.cov_x_m, 2, 2));      
-    pose_with_covariance_publisher_.publish(pose_with_covariance_msg);
+    pose_with_covariance_msg = std::make_shared<geometry_msgs::msg::PoseWithCovariance>(
+        transformToPoseWithCovariance(f2b_));
+
+    pose_with_covariance_msg->covariance = {
+      gsl_matrix_get(output_.cov_x_m, 0, 0), gsl_matrix_get(output_.cov_x_m, 0, 1), 0, 0, 0, 0,
+      gsl_matrix_get(output_.cov_x_m, 1, 0), gsl_matrix_get(output_.cov_x_m, 1, 1), 0, 0, 0, 0,
+      0, 0, static_cast<double>(position_covariance_[2]), 0, 0, 0,
+      0, 0, 0, static_cast<double>(orientation_covariance_[0]), 0, 0,
+      0, 0, 0, 0, static_cast<double>(orientation_covariance_[1]), 0,
+      0, 0, 0, 0, 0, gsl_matrix_get(output_.cov_x_m, 2, 2)
+    };
+    pose_with_covariance_publisher_->publish(*pose_with_covariance_msg);
   }
   if (publish_pose_with_covariance_stamped_) {
     // stamped Pose message
-    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
-    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
+    auto pose_with_covariance_stamped_msg = std::make_shared<geometry_msgs::msg::PoseWithCovarianceStamped>();
 
-    pose_with_covariance_stamped_msg->header.stamp    = time;
-    pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
+    pose_with_covariance_stamped_msg = std::make_shared<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        transformToPoseWithCovarianceStamped(f2b_, fixed_frame_, time));
 
-    tf::poseTFToMsg(f2b_, pose_with_covariance_stamped_msg->pose.pose);
-
-    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
-      (gsl_matrix_get(output_.cov_x_m, 0, 0)) (gsl_matrix_get(output_.cov_x_m, 0, 1))  (0)  (0)  (0)  (0)
-      (gsl_matrix_get(output_.cov_x_m, 1, 0)) (gsl_matrix_get(output_.cov_x_m, 1, 1))  (0)  (0)  (0)  (0)
-      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(output_.cov_x_m, 2, 2));
-    pose_with_covariance_stamped_publisher_.publish(pose_with_covariance_stamped_msg);
+    pose_with_covariance_stamped_msg->pose.covariance = {
+      gsl_matrix_get(output_.cov_x_m, 0, 0), gsl_matrix_get(output_.cov_x_m, 0, 1), 0, 0, 0, 0,
+      gsl_matrix_get(output_.cov_x_m, 1, 0), gsl_matrix_get(output_.cov_x_m, 1, 1), 0, 0, 0, 0,
+      0, 0, static_cast<double>(position_covariance_[2]), 0, 0, 0,
+      0, 0, 0, static_cast<double>(orientation_covariance_[0]), 0, 0,
+      0, 0, 0, 0, static_cast<double>(orientation_covariance_[1]), 0,
+      0, 0, 0, 0, 0, gsl_matrix_get(output_.cov_x_m, 2, 2)
+    };
+    pose_with_covariance_stamped_publisher_->publish(*pose_with_covariance_stamped_msg);
   }
 
   if (publish_measured_pose_) {
-    geometry_msgs::PoseWithCovarianceStamped::Ptr pose_with_covariance_stamped_msg;
-    pose_with_covariance_stamped_msg = boost::make_shared<geometry_msgs::PoseWithCovarianceStamped>();
+    auto pose_with_covariance_stamped_msg = std::make_shared<geometry_msgs::msg::PoseWithCovarianceStamped>();
 
-    pose_with_covariance_stamped_msg->header.stamp    = time;
-    pose_with_covariance_stamped_msg->header.frame_id = fixed_frame_;
+    pose_with_covariance_stamped_msg = std::make_shared<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        transformToPoseWithCovarianceStamped(f2b_, fixed_frame_, time));
 
-    tf::poseTFToMsg(measured_pose_, pose_with_covariance_stamped_msg->pose.pose);
-
-    pose_with_covariance_stamped_msg->pose.covariance = boost::assign::list_of
-      (gsl_matrix_get(Sigma_measured_, 0, 0)) (gsl_matrix_get(Sigma_measured_, 0, 1))  (0)  (0)  (0)  (0)
-      (gsl_matrix_get(Sigma_measured_, 1, 0)) (gsl_matrix_get(Sigma_measured_, 1, 1))  (0)  (0)  (0)  (0)
-      (0)  (0)  (static_cast<double>(position_covariance_[2])) (0)  (0)  (0)
-      (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[0])) (0)  (0)
-      (0)  (0)  (0)  (0)  (static_cast<double>(orientation_covariance_[1])) (0)
-      (0)  (0)  (0)  (0)  (0)  (gsl_matrix_get(Sigma_measured_, 2, 2));
-    measured_pose_publisher_.publish(pose_with_covariance_stamped_msg);
+    pose_with_covariance_stamped_msg->pose.covariance = {
+      gsl_matrix_get(Sigma_measured_, 0, 0), gsl_matrix_get(Sigma_measured_, 0, 1), 0, 0, 0, 0,
+      gsl_matrix_get(Sigma_measured_, 1, 0), gsl_matrix_get(Sigma_measured_, 1, 1), 0, 0, 0, 0,
+      0, 0, static_cast<double>(position_covariance_[2]), 0, 0, 0,
+      0, 0, 0, static_cast<double>(orientation_covariance_[0]), 0, 0,
+      0, 0, 0, 0, static_cast<double>(orientation_covariance_[1]), 0,
+      0, 0, 0, 0, 0, gsl_matrix_get(Sigma_measured_, 2, 2)
+    };
+    measured_pose_publisher_->publish(*pose_with_covariance_stamped_msg);
   }
 
   if (publish_base_tf_) {
-    tf::StampedTransform transform_msg (f2b_, time, fixed_frame_, base_frame_);
-    tf_broadcaster_.sendTransform (transform_msg);
+    auto transform_msg = createTransformStamped(f2b_, time, fixed_frame_, base_frame_);
+    tf_broadcaster_->sendTransform (transform_msg);
   }
 
   if (publish_odom_tf_) {
-    tf::Transform current_odom_tf;
-    tf::Transform m2o;
+    tf2::Transform current_odom_tf;
+    tf2::Transform m2o;
     createTfFromXYTheta(current_odom_msg_.pose.pose.position.x,
 			current_odom_msg_.pose.pose.position.y,
-			tf::getYaw(current_odom_msg_.pose.pose.orientation),
+			tf2::getYaw(current_odom_msg_.pose.pose.orientation),
 			current_odom_tf);
     m2o = f2b_ * (current_odom_tf * footprint_to_base_).inverse();
-    tf::StampedTransform transform_msg (m2o, time, fixed_frame_, odom_frame_);
-    tf_broadcaster_.sendTransform (transform_msg);
+    auto transform_msg = createTransformStamped(m2o, time, fixed_frame_, odom_frame_);
+    tf_broadcaster_->sendTransform (transform_msg);
   }
 
 }
 
-tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
+tf2::Vector3 LaserScanMatcher::fusePoses(const tf2::Transform& pose_delta)
 {
   int s;
 
@@ -941,8 +961,8 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   // Sigma = (I-K)Sigma_odom
   gsl_blas_dgemm(CblasNoTrans, CblasNoTrans,
     1.0, kalman_gain_comp_, Sigma_odom_trans_, 0.0, output_.cov_x_m);
-  double measured_pose_yaw = tf::getYaw(measured_pose_.getRotation());
-  double predicted_pose_yaw = tf::getYaw(predicted_pose_.getRotation());
+  double measured_pose_yaw = tf2::getYaw(measured_pose_.getRotation());
+  double predicted_pose_yaw = tf2::getYaw(predicted_pose_.getRotation());
   // handle discontinuity around +/- PI
   if (measured_pose_yaw < -M_PI/2.0 && predicted_pose_yaw > M_PI/2.0)
     measured_pose_yaw += 2*M_PI;
@@ -959,7 +979,7 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
   gsl_vector_set(xvec_, 2, predicted_pose_yaw);
   gsl_blas_dgemv(CblasNoTrans, 1.0, kalman_gain_comp_, xvec_, 1.0, yvec_);
 
-  ROS_DEBUG("kalman_gain:\n%e %e %e\n%e %e %e\n%e %e %e",
+  RCLCPP_DEBUG(this->get_logger(), "kalman_gain:\n%e %e %e\n%e %e %e\n%e %e %e",
             gsl_matrix_get(kalman_gain_, 0, 0),
             gsl_matrix_get(kalman_gain_, 0, 1),
             gsl_matrix_get(kalman_gain_, 0, 2),
@@ -969,15 +989,15 @@ tf::Vector3 LaserScanMatcher::fusePoses(const tf::Transform& pose_delta)
             gsl_matrix_get(kalman_gain_, 2, 0),
             gsl_matrix_get(kalman_gain_, 2, 1),
             gsl_matrix_get(kalman_gain_, 2, 2));
-  return tf::Vector3(
+  return tf2::Vector3(
     gsl_vector_get(yvec_, 0),
     gsl_vector_get(yvec_, 1),
     gsl_vector_get(yvec_, 2));
 }
 
-int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time)
+int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const rclcpp::Time& time)
 {
-  ros::WallTime start = ros::WallTime::now();
+  rclcpp::Time start = this->get_clock()->now();
 
   ref_ldp_scan->odometry[0] = 0.0;
   ref_ldp_scan->odometry[1] = 0.0;
@@ -1017,7 +1037,7 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
     sm_icp(&input_, &output_);
   } catch(int e) {
     if (e == GSL_EDOM) {
-      ROS_ERROR("sm_icp failed, probably singular matrix");
+      RCLCPP_ERROR(this->get_logger(), "sm_icp failed, probably singular matrix");
       output_.valid = false;
     } else
       throw e;
@@ -1027,13 +1047,13 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
 	gsl_matrix_get(output_.cov_x_m, 1, 1) < max_variance_trans_ &&
 	gsl_matrix_get(output_.cov_x_m, 2, 2) < max_variance_rot_) {
       // the correction of the laser's position, in the laser frame
-      ROS_DEBUG("found correlation transform: x=%f, y=%f, yaw=%f",
+      RCLCPP_DEBUG(this->get_logger(), "found correlation transform: x=%f, y=%f, yaw=%f",
                output_.x[0], output_.x[1], 180.0 * output_.x[2] / M_PI);
-      ROS_DEBUG("variances: %f, %f, %f",
+      RCLCPP_DEBUG(this->get_logger(), "variances: %f, %f, %f",
 		gsl_matrix_get(output_.cov_x_m, 0, 0),
 		gsl_matrix_get(output_.cov_x_m, 1, 1),
 		gsl_matrix_get(output_.cov_x_m, 2, 2));
-      tf::Transform pose_delta_laser;
+      tf2::Transform pose_delta_laser;
       createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2],
                           pose_delta_laser);
       // predicted pose is pcl-to-base_link
@@ -1043,18 +1063,22 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       // map-to-base_link, which is the pose we are looking for
       if (output_.x[2] > max_pose_delta_yaw_ ||
           output_.x[2] < -max_pose_delta_yaw_) {
-        ROS_WARN("laser pose delta max yaw exceeded %f", output_.x[2]);
+        RCLCPP_WARN(this->get_logger(), "laser pose delta max yaw exceeded %f", output_.x[2]);
         ld_free(curr_ldp_scan);
         ld_free(ref_ldp_scan);
         return 0;
       }
-      tf::Transform pose_delta =
+      tf2::Transform pose_delta =
         base_to_laser_ * pose_delta_laser * laser_to_base_;
+      
+      /* RKD
       if (publish_debug_)
         doPublishDebugTF(time, pose_delta, debug_laser_delta_publisher_, "");
+      */
+
       // Sigma_odom is the covariance of odometry-delta
       // we need covariance in the map frame, so apply transforms
-      setTransSigmaMatrix(tf::getYaw((initial_pose_ * base_to_laser_).getRotation()));
+      setTransSigmaMatrix(tf2::getYaw((initial_pose_ * base_to_laser_).getRotation()));
       gsl_blas_dgemm(CblasNoTrans, CblasTrans, 1.0,
 		     Sigma_odom_, trans_sigma_, 0.0, I2_);
       gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
@@ -1064,37 +1088,40 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const r
       gsl_blas_dgemm(CblasNoTrans, CblasNoTrans, 1.0, trans_sigma_,
 		     I2_, 0.0, output_.cov_x_m);
       if (!no_odom_fusing_) {
-	tf::Vector3 pv = fusePoses(pose_delta);
+	tf2::Vector3 pv = fusePoses(pose_delta);
 	createTfFromXYTheta(pv.getX(), pv.getY(), pv.getZ(), f2b_);
       } else {
 	f2b_ = f2pcl_ * predicted_pose_in_pcl_ * pose_delta;
       }
       doPublishScanRate(time);
-      double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-      ROS_DEBUG("scan matcher duration: %.1f ms, iterations: %d", dur, output_.iterations);
+      rclcpp::Time end = this->get_clock()->now();
+      rclcpp::Duration duration = end - start;
+      int64_t duration_ms = duration.nanoseconds() / 1e6;
+      RCLCPP_DEBUG(this->get_logger(), "scan matcher duration: %ld ms, iterations: %d",
+            static_cast<long>(duration_ms), output_.iterations);
       ld_free(curr_ldp_scan);
       ld_free(ref_ldp_scan);
       return 1;
     } else {
       skipped_poses_ += 1;
-      ROS_WARN_THROTTLE(10,"Variance of measured pose exceeded limit, "
-                            "not publishing. (%d poses skipped)",
-                        skipped_poses_);
+      RCLCPP_WARN_THROTTLE( this->get_logger(), *this->get_clock(), 10000,  
+            "Variance of measured pose exceeded limit, not publishing. (%d poses skipped)",
+            skipped_poses_);
       ld_free(curr_ldp_scan);
       ld_free(ref_ldp_scan);
       return 0;
     }
   } else {
-    ROS_WARN("Error in scan matching");
+    RCLCPP_WARN(this->get_logger(), "Error in scan matching");
     ld_free(curr_ldp_scan);
     ld_free(ref_ldp_scan);
     return 0;
   }
 }
 
-int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
+int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const rclcpp::Time& time)
 {
-  ros::WallTime start = ros::WallTime::now();
+  rclcpp::Time start = this->get_clock()->now();
   int success = 0;
 
   // CSM is used in the following way:
@@ -1121,13 +1148,13 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
   // **** estimated change since last scan
 
-  double dt = (time - last_icp_time_).toSec();
+  double dt = (time - last_icp_time_).seconds();
   double pr_ch_x, pr_ch_y, pr_ch_a;
   getPrediction(pr_ch_x, pr_ch_y, pr_ch_a, dt);
 
   // the predicted change of the laser's position, in the fixed frame
 
-  tf::Transform pr_ch;
+  tf2::Transform pr_ch;
   createTfFromXYTheta(pr_ch_x, pr_ch_y, pr_ch_a, pr_ch);
 
   // account for the change since the last kf, in the fixed frame
@@ -1136,12 +1163,12 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
   // the predicted change of the laser's position, in the laser frame
 
-  tf::Transform pr_ch_l;
+  tf2::Transform pr_ch_l;
   pr_ch_l = laser_to_base_ * f2b_.inverse() * pr_ch * f2b_ * base_to_laser_ ;
 
   input_.first_guess[0] = pr_ch_l.getOrigin().getX();
   input_.first_guess[1] = pr_ch_l.getOrigin().getY();
-  input_.first_guess[2] = tf::getYaw(pr_ch_l.getRotation());
+  input_.first_guess[2] = tf2::getYaw(pr_ch_l.getRotation());
 
   // If they are non-Null, free covariance gsl matrices to avoid leaking memory
   if (output_.cov_x_m)
@@ -1162,12 +1189,12 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
   // *** scan match - using point to line icp from CSM
   sm_icp(&input_, &output_);
-  tf::Transform corr_ch;
+  tf2::Transform corr_ch;
 
   if (output_.valid)
   {
     // the correction of the laser's position, in the laser frame
-    tf::Transform corr_ch_l;
+    tf2::Transform corr_ch_l;
     createTfFromXYTheta(output_.x[0], output_.x[1], output_.x[2], corr_ch_l);
 
     // the correction of the base's position, in the base frame
@@ -1182,7 +1209,7 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
   else
   {
     corr_ch.setIdentity();
-    ROS_WARN("Error in scan matching");
+    RCLCPP_WARN(this->get_logger(), "Error in scan matching");
   }
 
   // **** swap old and new
@@ -1203,14 +1230,17 @@ int LaserScanMatcher::processScan(LDP& curr_ldp_scan, const ros::Time& time)
 
   // **** statistics
 
-  double dur = (ros::WallTime::now() - start).toSec() * 1e3;
-  ROS_DEBUG("Scan matcher total duration: %.1f ms", dur);
+  rclcpp::Time end = this->get_clock()->now();
+  rclcpp::Duration duration = end - start;
+  int64_t duration_ms = duration.nanoseconds() / 1e6;
+  RCLCPP_INFO(this->get_logger(), "Scan matcher total duration: %ld ms", static_cast<long>(duration_ms));
+
   return success;
 }
 
-bool LaserScanMatcher::newKeyframeNeeded(const tf::Transform& d)
+bool LaserScanMatcher::newKeyframeNeeded(const tf2::Transform& d)
 {
-  if (fabs(tf::getYaw(d.getRotation())) > kf_dist_angular_) return true;
+  if (fabs(tf2::getYaw(d.getRotation())) > kf_dist_angular_) return true;
 
   double x = d.getOrigin().getX();
   double y = d.getOrigin().getY();
@@ -1219,8 +1249,7 @@ bool LaserScanMatcher::newKeyframeNeeded(const tf::Transform& d)
   return false;
 }
 
-void LaserScanMatcher::laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
-                                            LDP& ldp)
+void LaserScanMatcher::laserScanToLDP(const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg, LDP& ldp)
 {
   unsigned int n = scan_msg->ranges.size();
   ldp = ld_alloc_new(n);
@@ -1288,48 +1317,59 @@ void LaserScanMatcher::constructedScanToLDP(LDP& ldp)
   ldp->true_pose[2] = 0.0;
 }
 
-bool LaserScanMatcher::getBaseToLaserTf (const std::string& frame_id)
+bool LaserScanMatcher::getBaseToLaserTf(const std::string& frame_id)
 {
-  ros::Time t = ros::Time::now();
+  rclcpp::Time t = this->get_clock()->now();
 
-  tf::StampedTransform base_to_laser_tf;
-  try
-  {
-    tf_listener_.waitForTransform(
-      base_frame_, frame_id, t, ros::Duration(1.0));
-    tf_listener_.lookupTransform (
-      base_frame_, frame_id, t, base_to_laser_tf);
+  try {
+    if (!tf_buffer_->canTransform(base_frame_, frame_id, t, rclcpp::Duration::from_seconds(1.0))) {
+      RCLCPP_WARN(this->get_logger(), "Transform from %s to %s not available yet", frame_id.c_str(), base_frame_.c_str());
+      return false;
+    }
+
+    geometry_msgs::msg::TransformStamped transform_msg =
+      tf_buffer_->lookupTransform(base_frame_, frame_id, t);
+
+    tf2::Transform base_to_laser_tf;
+    tf2::fromMsg(transform_msg.transform, base_to_laser_tf);
+
+    base_to_laser_ = base_to_laser_tf;
+    laser_to_base_ = base_to_laser_.inverse();
   }
-  catch (tf::TransformException ex)
-  {
-    ROS_WARN("Could not get initial transform from base to laser frame, %s", ex.what());
+  catch (tf2::TransformException& ex) {
+    RCLCPP_WARN(this->get_logger(), "Could not get initial transform from base to laser frame: %s", ex.what());
     return false;
   }
-  base_to_laser_ = base_to_laser_tf;
-  laser_to_base_ = base_to_laser_.inverse();
 
   return true;
 }
 
-bool LaserScanMatcher::getBaseToFootprintTf (const std::string& frame_id)
+bool LaserScanMatcher::getBaseToFootprintTf(const std::string& frame_id)
 {
-  ros::Time t = ros::Time::now();
+  rclcpp::Time t = this->get_clock()->now();
 
-  tf::StampedTransform footprint_to_base_tf;
-  try
-  {
-    tf_listener_.waitForTransform(
-      frame_id, base_frame_, t, ros::Duration(1.0));
-    tf_listener_.lookupTransform (
-      frame_id, base_frame_, t, footprint_to_base_tf);
+  try {
+    // Check if the transform is available
+    if (!tf_buffer_->canTransform(frame_id, base_frame_, t, rclcpp::Duration::from_seconds(1.0))) {
+      RCLCPP_WARN(this->get_logger(), "Transform from %s to %s not available yet", frame_id.c_str(), base_frame_.c_str());
+      return false;
+    }
+
+    // Lookup the transform
+    geometry_msgs::msg::TransformStamped transform_msg =
+      tf_buffer_->lookupTransform(frame_id, base_frame_, t);
+
+    // Convert to tf2::Transform
+    tf2::Transform footprint_to_base_tf;
+    tf2::fromMsg(transform_msg.transform, footprint_to_base_tf);
+
+    footprint_to_base_ = footprint_to_base_tf;
+    base_to_footprint_ = footprint_to_base_.inverse();
   }
-  catch (tf::TransformException ex)
-  {
-    ROS_WARN("Could not get initial transform from footprint to base frame, %s", ex.what());
+  catch (const tf2::TransformException& ex) {
+    RCLCPP_WARN(this->get_logger(), "Could not get initial transform from footprint to base frame: %s", ex.what());
     return false;
   }
-  footprint_to_base_ = footprint_to_base_tf;
-  base_to_footprint_ = footprint_to_base_.inverse();
 
   return true;
 }
@@ -1339,7 +1379,7 @@ bool LaserScanMatcher::getBaseToFootprintTf (const std::string& frame_id)
 void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
                                      double& pr_ch_a, double dt)
 {
-  boost::mutex::scoped_lock(mutex_);
+  std::scoped_lock lock(mutex_);
 
   // **** base case - no input available, use zero-motion model
   pr_ch_x = 0.0;
@@ -1354,8 +1394,8 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
     pr_ch_y = current_odom_msg_.pose.pose.position.y -
               reference_odom_msg_.pose.pose.position.y;
 
-    pr_ch_a = tf::getYaw(current_odom_msg_.pose.pose.orientation) -
-              tf::getYaw(reference_odom_msg_.pose.pose.orientation);
+    pr_ch_a = tf2::getYaw(current_odom_msg_.pose.pose.orientation) -
+              tf2::getYaw(reference_odom_msg_.pose.pose.orientation);
 
     if      (pr_ch_a >= M_PI) pr_ch_a -= 2.0 * M_PI;
     else if (pr_ch_a < -M_PI) pr_ch_a += 2.0 * M_PI;
@@ -1367,13 +1407,111 @@ void LaserScanMatcher::getPrediction(double& pr_ch_x, double& pr_ch_y,
 
 }
 
-void LaserScanMatcher::createTfFromXYTheta(
-  double x, double y, double theta, tf::Transform& t)
+void LaserScanMatcher::createTfFromXYTheta(double x, double y, double theta, tf2::Transform& t)
 {
-  t.setOrigin(tf::Vector3(x, y, 0.0));
-  tf::Quaternion q;
+  t.setOrigin(tf2::Vector3(x, y, 0.0));
+  tf2::Quaternion q;
   q.setRPY(0.0, 0.0, theta);
   t.setRotation(q);
+}
+
+geometry_msgs::msg::TransformStamped createTransformStamped(
+const tf2::Transform& transform,
+const rclcpp::Time& stamp,
+const std::string& parent_frame,
+const std::string& child_frame)
+{
+    geometry_msgs::msg::TransformStamped msg;
+    msg.header.stamp = stamp;
+    msg.header.frame_id = parent_frame;
+    msg.child_frame_id = child_frame;
+
+    msg.transform.translation.x = transform.getOrigin().x();
+    msg.transform.translation.y = transform.getOrigin().y();
+    msg.transform.translation.z = transform.getOrigin().z();
+
+    msg.transform.rotation.x = transform.getRotation().x();
+    msg.transform.rotation.y = transform.getRotation().y();
+    msg.transform.rotation.z = transform.getRotation().z();
+    msg.transform.rotation.w = transform.getRotation().w();
+
+    return msg;
+}
+
+geometry_msgs::msg::Pose transformToPose(const tf2::Transform& tf)
+{
+  geometry_msgs::msg::Pose pose;
+
+  pose.position.x = tf.getOrigin().x();
+  pose.position.y = tf.getOrigin().y();
+  pose.position.z = tf.getOrigin().z();
+
+  pose.orientation.x = tf.getRotation().x();
+  pose.orientation.y = tf.getRotation().y();
+  pose.orientation.z = tf.getRotation().z();
+  pose.orientation.w = tf.getRotation().w();
+
+  return pose;
+}
+
+geometry_msgs::msg::PoseStamped transformToPoseStamped(
+    const tf2::Transform& tf,
+    const std::string& frame_id,
+    const rclcpp::Time& stamp)
+{
+  geometry_msgs::msg::PoseStamped pose_stamped;
+
+  pose_stamped.header.frame_id = frame_id;
+  pose_stamped.header.stamp = stamp;
+
+  pose_stamped.pose.position.x = tf.getOrigin().x();
+  pose_stamped.pose.position.y = tf.getOrigin().y();
+  pose_stamped.pose.position.z = tf.getOrigin().z();
+
+  pose_stamped.pose.orientation.x = tf.getRotation().x();
+  pose_stamped.pose.orientation.y = tf.getRotation().y();
+  pose_stamped.pose.orientation.z = tf.getRotation().z();
+  pose_stamped.pose.orientation.w = tf.getRotation().w();
+
+  return pose_stamped;
+}
+
+geometry_msgs::msg::PoseWithCovariance transformToPoseWithCovariance(const tf2::Transform& tf)
+{
+  geometry_msgs::msg::PoseWithCovariance pose_cov;
+
+  pose_cov.pose.position.x = tf.getOrigin().x();
+  pose_cov.pose.position.y = tf.getOrigin().y();
+  pose_cov.pose.position.z = tf.getOrigin().z();
+
+  pose_cov.pose.orientation.x = tf.getRotation().x();
+  pose_cov.pose.orientation.y = tf.getRotation().y();
+  pose_cov.pose.orientation.z = tf.getRotation().z();
+  pose_cov.pose.orientation.w = tf.getRotation().w();
+
+  return pose_cov;
+}
+
+geometry_msgs::msg::PoseWithCovarianceStamped transformToPoseWithCovarianceStamped(
+    const tf2::Transform& tf,
+    const std::string& frame_id,
+    const rclcpp::Time& stamp)
+{
+  geometry_msgs::msg::PoseWithCovarianceStamped pose_cov_stamped;
+
+  pose_cov_stamped.header.frame_id = frame_id;
+  pose_cov_stamped.header.stamp = stamp;
+
+  pose_cov_stamped.pose.pose.position.x = tf.getOrigin().x();
+  pose_cov_stamped.pose.pose.position.y = tf.getOrigin().y();
+  pose_cov_stamped.pose.pose.position.z = tf.getOrigin().z();
+
+  pose_cov_stamped.pose.pose.orientation.x = tf.getRotation().x();
+  pose_cov_stamped.pose.pose.orientation.y = tf.getRotation().y();
+  pose_cov_stamped.pose.pose.orientation.z = tf.getRotation().z();
+  pose_cov_stamped.pose.pose.orientation.w = tf.getRotation().w();
+
+  return pose_cov_stamped;
 }
 
 } // namespace scan_tools

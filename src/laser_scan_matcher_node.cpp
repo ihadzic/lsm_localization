@@ -43,6 +43,8 @@
 
 #include <laser_scan_matcher/laser_scan_matcher.h>
 
+auto logger = rclcpp::get_logger("laser_scan_matcher");
+
 // Workaround for a bug in CSM library. CSM does not properly
 // handle all cases of singular matrix so an error trickles
 // down in to the GSL library and causes the error handler
@@ -55,7 +57,7 @@
 void csm_gsl_error_handler(const char* reason, const char *file, int line, int gsl_errno)
 {
 
-  ROS_ERROR("intercepted GSL error in %s/%d: %s (%d)",
+  RCLCPP_ERROR(logger, "intercepted GSL error in %s/%d: %s (%d)",
             file, line, reason, gsl_errno);
   if (gsl_errno == GSL_EDOM)
     throw gsl_errno;
@@ -66,10 +68,13 @@ void csm_gsl_error_handler(const char* reason, const char *file, int line, int g
 int main(int argc, char** argv)
 {
   gsl_set_error_handler(csm_gsl_error_handler);
-  ros::init(argc, argv, "LaserScanMatcher");
-  ros::NodeHandle nh;
-  ros::NodeHandle nh_private("~");
-  scan_tools::LaserScanMatcher laser_scan_matcher(nh, nh_private);
-  ros::spin();
+
+  rclcpp::init(argc, argv);
+
+  auto node = std::make_shared<scan_tools::LaserScanMatcher>();
+
+  rclcpp::spin(node);
+
+  rclcpp::shutdown();
   return 0;
 }

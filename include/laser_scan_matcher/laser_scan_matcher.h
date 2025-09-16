@@ -44,72 +44,85 @@
 #ifndef LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 #define LASER_SCAN_MATCHER_LASER_SCAN_MATCHER_H
 
-#include <ros/ros.h>
-#include <sensor_msgs/LaserScan.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/Pose2D.h>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
-#include <geometry_msgs/PoseWithCovariance.h>
-#include <geometry_msgs/TwistStamped.h>
-#include <std_msgs/Empty.h>
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/OccupancyGrid.h>
-#include <nav_msgs/MapMetaData.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_broadcaster.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose2_d.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <std_msgs/msg/empty.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/occupancy_grid.hpp>
+#include <nav_msgs/msg/map_meta_data.hpp>
+
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2/LinearMath/Transform.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2/utils.h>
+
 #include <csm/csm_all.h>  // csm defines min and max, but Eigen complains
+#undef min
+#undef max
+
+#include <algorithm>      // Now safe to use std::max and std::min
+#include <complex>
+
 #include <gsl/gsl_blas.h>
 #include <gsl/gsl_linalg.h>
 
+#include <deque>
 #include <laser_scan_matcher/scan_constructor.h>
-#undef min
-#undef max
+
 
 #define MAX_ODOM_HISTORY 1024
 #define MAX_ODOM_AGE 2.0
 
+
 namespace scan_tools
 {
 
-class LaserScanMatcher
+class LaserScanMatcher : public rclcpp::Node
 {
   public:
 
-    LaserScanMatcher(ros::NodeHandle nh, ros::NodeHandle nh_private);
+    explicit LaserScanMatcher();
     ~LaserScanMatcher();
 
   private:
 
     // **** ros
-    ros::NodeHandle nh_;
-    ros::NodeHandle nh_private_;
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_subscriber_;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_subscriber_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_subscriber_;
 
-    ros::Subscriber scan_subscriber_;
-    ros::Subscriber map_subscriber_;
-    ros::Subscriber odom_subscriber_;
-    ros::Subscriber initialpose_subscriber_;
 
-    tf::TransformListener    tf_listener_;
-    tf::TransformBroadcaster tf_broadcaster_;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-    tf::Transform base_to_laser_; // static, cached
-    tf::Transform laser_to_base_; // static, cached, calculated from base_to_laser_
-    tf::Transform base_to_footprint_;
-    tf::Transform footprint_to_base_;
+    tf2::Transform base_to_laser_; // static, cached
+    tf2::Transform laser_to_base_; // static, cached, calculated from base_to_laser_
+    tf2::Transform base_to_footprint_;
+    tf2::Transform footprint_to_base_;
 
-    ros::Publisher  pose_publisher_;
-    ros::Publisher  pose_stamped_publisher_;
-    ros::Publisher  pose_with_covariance_publisher_;
-    ros::Publisher  pose_with_covariance_stamped_publisher_;
-    ros::Publisher  predicted_pose_publisher_;
-    ros::Publisher  measured_pose_publisher_;
-    ros::Publisher  constructed_scan_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Pose2D>::SharedPtr pose_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_stamped_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseWithCovariance>::SharedPtr pose_with_covariance_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_with_covariance_stamped_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr predicted_pose_publisher_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr measured_pose_publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr constructed_scan_publisher_;
 
-    ros::Publisher  debug_odom_delta_publisher_;
-    ros::Publisher  debug_laser_delta_publisher_;
-    ros::Publisher  debug_odom_reference_publisher_;
-    ros::Publisher  debug_odom_current_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr debug_odom_delta_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr debug_odom_reference_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr debug_odom_current_publisher_;
+
+    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr debug_laser_delta_publisher_;
+
 
     // **** parameters
 
@@ -148,7 +161,7 @@ class LaserScanMatcher
 
     // **** state variables
 
-    boost::mutex mutex_;
+    std::mutex mutex_;
 
     bool initialized_;
     bool have_map_;
@@ -164,24 +177,24 @@ class LaserScanMatcher
     std::string observed_scan_frame_;
     int skipped_poses_;
 
-    tf::Transform predicted_pose_;
-    tf::Transform measured_pose_;
-    tf::Transform predicted_pose_in_pcl_;
-    tf::Transform initial_pose_;
-    tf::Transform f2pcl_;  // fixed-to-point-cloud-local tf
-    tf::Transform pcl2f_;  // (and its inverse)
+    tf2::Transform predicted_pose_;
+    tf2::Transform measured_pose_;
+    tf2::Transform predicted_pose_in_pcl_;
+    tf2::Transform initial_pose_;
+    tf2::Transform f2pcl_;   // fixed-to-point-cloud-local tf
+    tf2::Transform pcl2f_;   // inverse
 
-    tf::Transform f2b_;    // fixed-to-base tf (pose of base frame in fixed frame)
-    tf::Transform f2b_kf_; // pose of the last keyframe scan in fixed frame
+    tf2::Transform f2b_;     // fixed-to-base tf
+    tf2::Transform f2b_kf_;  // last keyframe pose
 
-    ros::Time last_icp_time_;
+    rclcpp::Time last_icp_time_;
 
-    nav_msgs::Odometry current_odom_msg_;
-    nav_msgs::Odometry reference_odom_msg_;
+    nav_msgs::msg::Odometry current_odom_msg_;
+    nav_msgs::msg::Odometry reference_odom_msg_;
 
     std::vector<double> constructed_intensities_;
     std::vector<double> constructed_ranges_;
-    std::deque<nav_msgs::Odometry> odom_history_;
+    std::deque<nav_msgs::msg::Odometry> odom_history_;
 
     // covariance tracking
     gsl_matrix *Sigma_odom_;
@@ -207,42 +220,70 @@ class LaserScanMatcher
 
     void initParams();
     void resetState();
-    double syncOdom(const ros::Time& time);
-    void addOdomToHistory(const nav_msgs::Odometry::ConstPtr& o);
-    double getOdomDeltaT(const nav_msgs::Odometry::ConstPtr& o);
+
+    double syncOdom(const rclcpp::Time& time);
+    void addOdomToHistory(const nav_msgs::msg::Odometry::SharedPtr& o);
+    double getOdomDeltaT(const nav_msgs::msg::Odometry::SharedPtr& o);
     void setTransSigmaMatrix(const double yaw);
 
-    nav_msgs::Odometry* earliestOdomAfter(const ros::Time& time);
-    nav_msgs::Odometry* latestOdomBefore(const ros::Time& time);
-    tf::Vector3 fusePoses(const tf::Transform& pose_delta);
-    int processScan(LDP& curr_ldp_scan, const ros::Time& time);
-    int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const ros::Time& time);
+    nav_msgs::msg::Odometry* earliestOdomAfter(const rclcpp::Time& time);
+    nav_msgs::msg::Odometry* latestOdomBefore(const rclcpp::Time& time);
+
+    tf2::Vector3 fusePoses(const tf2::Transform& pose_delta);
+
+    int processScan(LDP& curr_ldp_scan, const rclcpp::Time& time);
+    int processScan(LDP& curr_ldp_scan, LDP& ref_ldp_scan, const rclcpp::Time& time);
+
     void doPredictPose(double delta_t);
-    void doPublishScanRate(const ros::Time& time);
-    void doPublishOdomRate(const ros::Time& time);
-    void doPublishDebugTF(const ros::Time& time, const tf::Transform& odom_delta, const ros::Publisher& publisher, const std::string& frame);
+    void doPublishScanRate(const rclcpp::Time& time);
+    void doPublishOdomRate(const rclcpp::Time& time);
 
-    void laserScanToLDP(const sensor_msgs::LaserScan::ConstPtr& scan_msg,
-                              LDP& ldp);
+    void doPublishDebugTF(
+      const rclcpp::Time& time,
+      const tf2::Transform& transform,
+      const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr& publisher,
+      const std::string& frame
+    );
+
+    void laserScanToLDP(const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg, LDP& ldp);
     void constructedScanToLDP(LDP& ldp);
-    void constructScan(const ros::Time& timestamp);
+    void constructScan(const rclcpp::Time& time);
 
-    void mapCallback (const nav_msgs::OccupancyGrid::ConstPtr& map_msg);
+    void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr& map_msg);
+    void initialposeCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr& pose_msg);
+    void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg);
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr& odom_msg);
 
-    void initialposeCallback (const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg);
+    bool getBaseToLaserTf(const std::string& frame_id);
+    bool getBaseToFootprintTf(const std::string& frame_id);
 
-    void scanCallback (const sensor_msgs::LaserScan::ConstPtr& scan_msg);
-    void odomCallback(const nav_msgs::Odometry::ConstPtr& odom_msg);
-    bool getBaseToLaserTf (const std::string& frame_id);
-    bool getBaseToFootprintTf (const std::string& frame_id);
+    bool newKeyframeNeeded(const tf2::Transform& d);
 
-    bool newKeyframeNeeded(const tf::Transform& d);
-
-    void getPrediction(double& pr_ch_x, double& pr_ch_y,
-                       double& pr_ch_a, double dt);
-
-    void createTfFromXYTheta(double x, double y, double theta, tf::Transform& t);
+    void getPrediction(double& pr_ch_x, double& pr_ch_y, double& pr_ch_a, double dt);
+    void createTfFromXYTheta(double x, double y, double theta, tf2::Transform& t);
 };
+
+geometry_msgs::msg::TransformStamped createTransformStamped(
+    const tf2::Transform& transform,
+    const rclcpp::Time& stamp,
+    const std::string& parent_frame,
+    const std::string& child_frame
+);
+geometry_msgs::msg::Pose transformToPose(const tf2::Transform& tf);
+geometry_msgs::msg::PoseStamped transformToPoseStamped(
+    const tf2::Transform& tf,
+    const std::string& frame_id,
+    const rclcpp::Time& stamp
+    );   
+geometry_msgs::msg::PoseWithCovariance transformToPoseWithCovariance(const tf2::Transform& tf);
+geometry_msgs::msg::PoseWithCovarianceStamped transformToPoseWithCovarianceStamped(
+    const tf2::Transform& tf,
+    const std::string& frame_id,
+    const rclcpp::Time& stamp
+    );
+
+
+
 
 } // namespace scan_tools
 

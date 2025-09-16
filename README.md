@@ -20,6 +20,13 @@ pose is calculated using the PL-ICP algorithm from
 derived from the [Laser Scan Matcher](http://wiki.ros.org/laser_scan_matcher)
 package.
 
+## Installation ROS2
+```
+colcon build
+source ~/colcon_ws/install/setup.bash
+ros2 launch lsm_localization lsm_localization.launch.py
+```
+
 ## Installation
 
 To install the package, clone this repository into your workspace
