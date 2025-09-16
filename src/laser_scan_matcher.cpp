@@ -64,6 +64,7 @@ LaserScanMatcher::LaserScanMatcher() : rclcpp::Node("laser_scan_matcher"),
     sm_debug_write(1);
 
   // **** state variables
+  scan_counter_ = 0; 
 
   // pre-allocate all matrices for speed
   Sigma_odom_ = gsl_matrix_calloc(3, 3);
@@ -765,10 +766,9 @@ void LaserScanMatcher::scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr
     observed_scan_frame_ = scan_msg->header.frame_id;
     initialized_ = true;
   }
-
-  // RKD replae with coutner for seq?
-  //if (scan_msg->header.seq % scan_downsample_rate_ != 0)
-  //    return;
+  
+  if (++scan_counter_ % scan_downsample_rate_ != 0)
+      return;
   rclcpp::Time start = this->get_clock()->now();
   LDP curr_ldp_scan;
   int r = 0;

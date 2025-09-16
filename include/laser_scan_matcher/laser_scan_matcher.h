@@ -250,8 +250,9 @@ class LaserScanMatcher : public rclcpp::Node
 
     void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr& map_msg);
     void initialposeCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr& pose_msg);
-    void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg);
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr& odom_msg);
+    void scanCallback(const sensor_msgs::msg::LaserScan::SharedPtr& scan_msg);
+    int scan_counter_;
 
     bool getBaseToLaserTf(const std::string& frame_id);
     bool getBaseToFootprintTf(const std::string& frame_id);
