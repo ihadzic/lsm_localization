@@ -156,7 +156,7 @@ LaserScanMatcher::LaserScanMatcher() : rclcpp::Node("laser_scan_matcher"),
         this->odomCallback(msg);
   });
 
-  initialpose_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>( "pose_topic", 10,
+  initialpose_subscriber_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(initialpose_topic_, 1,
       [this](const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
         this->initialposeCallback(msg);
   });
@@ -223,74 +223,118 @@ void LaserScanMatcher::resetState()
 
 void LaserScanMatcher::initParams()
 {
-  if (!this->get_parameter ("base_frame", base_frame_))
-    base_frame_ = "base_link";
-  if (!this->get_parameter ("fixed_frame", fixed_frame_))
-    fixed_frame_ = "world";
-  if (!this->get_parameter ("initialpose_topic_name", initialpose_topic_))
-    initialpose_topic_ = "initialpose";
-  if (!this->get_parameter("scan_downsample_rate", scan_downsample_rate_))
-    scan_downsample_rate_ = 1;
+  this->declare_parameter<std::string>("base_frame", "base_link");
+  this->get_parameter ("base_frame", base_frame_);
+  RCLCPP_INFO(this->get_logger(), "base_frame: %s", base_frame_.c_str());
+
+  this->declare_parameter<std::string>("fixed_frame", "world");
+  this->get_parameter ("fixed_frame", fixed_frame_);
+  RCLCPP_INFO(this->get_logger(), "fixed_frame: %s", fixed_frame_.c_str());
+
+  this->declare_parameter<std::string>("initialpose_topic_name", "initialpose");
+  this->get_parameter ("initialpose_topic_name", initialpose_topic_);
+  RCLCPP_INFO(this->get_logger(), "initialpose_topic_name: %s", initialpose_topic_.c_str());
+
+  this->declare_parameter<int>("scan_downsample_rate", 1);
+  this->get_parameter ("scan_downsample_rate", scan_downsample_rate_);
   if (scan_downsample_rate_ <= 0)
     scan_downsample_rate_ = 1;
+  RCLCPP_INFO(this->get_logger(), "scan_downsample_rate: %d", scan_downsample_rate_);
 
   // **** keyframe params: when to generate the keyframe scan
   // if either is set to 0, reduces to frame-to-frame matching
 
-  if (!this->get_parameter ("kf_dist_linear", kf_dist_linear_))
-    kf_dist_linear_ = 0.10;
-  if (!this->get_parameter ("kf_dist_angular", kf_dist_angular_))
-    kf_dist_angular_ = 10.0 * (M_PI / 180.0);
+  this->declare_parameter<double>("kf_dist_linear", 0.10);
+  this->get_parameter ("kf_dist_linear", kf_dist_linear_);
+  RCLCPP_INFO(this->get_logger(), "kf_dist_linear: %f", kf_dist_linear_);
+
+  this->declare_parameter<double>("kf_dist_angular", 10.0 * (M_PI / 180.0));
+  this->get_parameter ("kf_dist_angular", kf_dist_angular_);
+  RCLCPP_INFO(this->get_logger(), "kf_dist_angular: %f", kf_dist_angular_);
 
   kf_dist_linear_sq_ = kf_dist_linear_ * kf_dist_linear_;
 
-  if (!this->get_parameter ("no_odom_fusing", no_odom_fusing_))
-    no_odom_fusing_ = false;
+  this->declare_parameter<bool>("no_odom_fusing", false);
+  this->get_parameter ("no_odom_fusing", no_odom_fusing_);
+  RCLCPP_INFO(this->get_logger(), "no_odom_fusing: %s", no_odom_fusing_ ? "true" : "false");
 
   // **** Parameters that control map-to-scan matching
   // use_map must be true for map-to-scan matching to be used
   // other parameters control how the initial-pose scan is constructed
-  if (!this->get_parameter ("use_map", use_map_))
-    use_map_ = true;
-  if (!this->get_parameter ("map_occupancy_threshold", map_occupancy_threshold_))
-    map_occupancy_threshold_ = 10.0;
+  this->declare_parameter<bool>("use_map", true);
+  this->get_parameter ("use_map", use_map_);
+  RCLCPP_INFO(this->get_logger(), "use_map: %s", use_map_ ? "true" : "false");
+
+  this->declare_parameter<double>("map_occupancy_threshold", 10.0);
+  this->get_parameter ("map_occupancy_threshold", map_occupancy_threshold_);
+  RCLCPP_INFO(this->get_logger(), "map_occupancy_threshold: %f", map_occupancy_threshold_);
+
   // min and max range for constructing the scan that initial pose
   // would see
-  if (!this->get_parameter("max_allowed_range", max_allowed_range_))
-    max_allowed_range_ = -1;
-  if (!this->get_parameter ("max_variance_trans", max_variance_trans_))
-    max_variance_trans_ = 1e-5;
-  if (!this->get_parameter ("max_variance_rot", max_variance_rot_))
-    max_variance_rot_ = 1e-5;
-  if (!this->get_parameter ("max_pose_delta_yaw", max_pose_delta_yaw_))
-    max_pose_delta_yaw_ = 0.785; // 45 degrees
+  this->declare_parameter<double>("max_allowed_range", -1);
+  this->get_parameter ("max_allowed_range", max_allowed_range_);
+  RCLCPP_INFO(this->get_logger(), "max_allowed_range: %f", max_allowed_range_);
+
+  this->declare_parameter<double>("max_variance_trans", 1e-5);
+  this->get_parameter ("max_variance_trans", max_variance_trans_);
+  RCLCPP_INFO(this->get_logger(), "max_variance_trans: %f", max_variance_trans_);
+
+  this->declare_parameter<double>("max_variance_rot", 1e-5);
+  this->get_parameter ("max_variance_rot", max_variance_rot_);
+  RCLCPP_INFO(this->get_logger(), "max_variance_rot: %f", max_variance_rot_);
+
+  this->declare_parameter<double>("max_pose_delta_yaw", 0.785);
+  this->get_parameter ("max_pose_delta_yaw", max_pose_delta_yaw_);
+  RCLCPP_INFO(this->get_logger(), "max_pose_delta_yaw: %f", max_pose_delta_yaw_);
 
   // **** How to publish the output?
   // tf (fixed_frame->base_frame),
   // pose message (pose of base frame in the fixed frame)
-  if (!this->get_parameter ("publish_base_tf", publish_base_tf_))
-    publish_base_tf_ = false;
-  if (!this->get_parameter ("publish_odom_tf", publish_odom_tf_))
-    publish_odom_tf_ = true;
-  if (!this->get_parameter ("publish_pose", publish_pose_))
-    publish_pose_ = true;
-  if (!this->get_parameter ("publish_constructed_scan", publish_constructed_scan_))
-    publish_constructed_scan_ = false;
-  if (!this->get_parameter ("publish_pose_stamped", publish_pose_stamped_))
-    publish_pose_stamped_ = false;
-  if (!this->get_parameter ("publish_pose_with_covariance", publish_pose_with_covariance_))
-    publish_pose_with_covariance_ = false;
-  if (!this->get_parameter ("publish_pose_with_covariance_stamped", publish_pose_with_covariance_stamped_))
-    publish_pose_with_covariance_stamped_ = true;
-  if (!this->get_parameter ("publish_predicted_pose", publish_predicted_pose_))
-    publish_predicted_pose_ = false;
-  if (!this->get_parameter ("publish_measured_pose", publish_measured_pose_))
-    publish_measured_pose_ = false;
-  if (!this->get_parameter ("publish_debug", publish_debug_))
-    publish_debug_ = false;
-  if (!this->get_parameter ("debug_csm", debug_csm_))
-    debug_csm_ = false;
+  this->declare_parameter<bool>("publish_base_tf", false);
+  this->get_parameter ("publish_base_tf", publish_base_tf_);
+  RCLCPP_INFO(this->get_logger(), "publish_base_tf: %s", publish_base_tf_ ? "true" : "false");
 
+  this->declare_parameter<bool>("publish_odom_tf", true);
+  this->get_parameter ("publish_odom_tf", publish_odom_tf_);
+  RCLCPP_INFO(this->get_logger(), "publish_odom_tf: %s", publish_odom_tf_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_pose", true);
+  this->get_parameter ("publish_pose", publish_pose_);
+  RCLCPP_INFO(this->get_logger(), "publish_pose: %s", publish_pose_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_constructed_scan", false);
+  this->get_parameter ("publish_constructed_scan", publish_constructed_scan_);
+  RCLCPP_INFO(this->get_logger(), "publish_constructed_scan: %s", publish_constructed_scan_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_pose_stamped", false);
+  this->get_parameter ("publish_pose_stamped", publish_pose_stamped_);
+  RCLCPP_INFO(this->get_logger(), "publish_pose_stamped: %s", publish_pose_stamped_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_pose_with_covariance", false);
+  this->get_parameter ("publish_pose_with_covariance", publish_pose_with_covariance_);
+  RCLCPP_INFO(this->get_logger(), "publish_pose_with_covariance: %s", publish_pose_with_covariance_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_pose_with_covariance_stamped", true);
+  this->get_parameter ("publish_pose_with_covariance_stamped", publish_pose_with_covariance_stamped_);
+  RCLCPP_INFO(this->get_logger(), "publish_pose_with_covariance_stamped: %s", publish_pose_with_covariance_stamped_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_predicted_pose", false);
+  this->get_parameter ("publish_predicted_pose", publish_predicted_pose_);
+  RCLCPP_INFO(this->get_logger(), "publish_predicted_pose: %s", publish_predicted_pose_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_measured_pose", false);
+  this->get_parameter ("publish_measured_pose", publish_measured_pose_);
+  RCLCPP_INFO(this->get_logger(), "publish_measured_pose: %s", publish_measured_pose_ ? "true" : "false");
+
+  this->declare_parameter<bool>("publish_debug", false);
+  this->get_parameter ("publish_debug", publish_debug_);
+  RCLCPP_INFO(this->get_logger(), "publish_debug: %s", publish_debug_ ? "true" : "false");
+
+  this->declare_parameter<bool>("debug_csm", false);
+  this->get_parameter ("debug_csm", debug_csm_);
+  RCLCPP_INFO(this->get_logger(), "debug_csm: %s", debug_csm_ ? "true" : "false");
+
+  /* RKD */
   if (!this->get_parameter("position_covariance", position_covariance_))
   {
     position_covariance_.resize(3);
@@ -305,77 +349,95 @@ void LaserScanMatcher::initParams()
   // **** CSM parameters - comments copied from algos.h (by Andrea Censi)
 
   // Maximum angular displacement between scans
-  if (!this->get_parameter ("max_angular_correction_deg", input_.max_angular_correction_deg))
-    input_.max_angular_correction_deg = 45.0;
+  this->declare_parameter<double>("max_angular_correction_deg", 45.0);
+  this->get_parameter ("max_angular_correction_deg", input_.max_angular_correction_deg);
+  RCLCPP_INFO(this->get_logger(), "input_.max_angular_correction_deg: %f", input_.max_angular_correction_deg);
 
   // Maximum translation between scans (m)
-  if (!this->get_parameter ("max_linear_correction", input_.max_linear_correction))
-    input_.max_linear_correction = 0.50;
+  this->declare_parameter<double>("max_linear_correction", 0.50);
+  this->get_parameter ("max_linear_correction", input_.max_linear_correction);
+  RCLCPP_INFO(this->get_logger(), "input_.max_linear_correction: %f", input_.max_linear_correction);
 
   // Maximum ICP cycle iterations
-  if (!this->get_parameter ("max_iterations", input_.max_iterations))
-    input_.max_iterations = 10;
+  this->declare_parameter<int>("max_iterations", 10);
+  this->get_parameter ("max_iterations", input_.max_iterations);
+  RCLCPP_INFO(this->get_logger(), "input_.max_iterations: %d", input_.max_iterations);
 
   // A threshold for stopping (m)
-  if (!this->get_parameter ("epsilon_xy", input_.epsilon_xy))
-    input_.epsilon_xy = 0.000001;
+  this->declare_parameter<double>("epsilon_xy", 0.000001);
+  this->get_parameter ("epsilon_xy", input_.epsilon_xy);
+  RCLCPP_INFO(this->get_logger(), "input_.epsilon_xy: %f", input_.epsilon_xy);
 
   // A threshold for stopping (rad)
-  if (!this->get_parameter ("epsilon_theta", input_.epsilon_theta))
-    input_.epsilon_theta = 0.000001;
+  this->declare_parameter<double>("epsilon_theta", 0.000001);
+  this->get_parameter ("epsilon_theta", input_.epsilon_theta);
+  RCLCPP_INFO(this->get_logger(), "input_.epsilon_theta: %f", input_.epsilon_theta);
 
   // Maximum distance for a correspondence to be valid
-  if (!this->get_parameter ("max_correspondence_dist", input_.max_correspondence_dist))
-    input_.max_correspondence_dist = 0.3;
+  this->declare_parameter<double>("max_correspondence_dist", 0.3);
+  this->get_parameter ("max_correspondence_dist", input_.max_correspondence_dist);
+  RCLCPP_INFO(this->get_logger(), "input_.max_correspondence_dist: %f", input_.max_correspondence_dist);
 
   // Noise in the scan (m)
-  if (!this->get_parameter ("sigma", input_.sigma))
-    input_.sigma = 0.010;
+  this->declare_parameter<double>("sigma", 0.010);
+  this->get_parameter ("sigma", input_.sigma);
+  RCLCPP_INFO(this->get_logger(), "input_.sigma: %f", input_.sigma);
 
   // Use smart tricks for finding correspondences.
-  if (!this->get_parameter ("use_corr_tricks", input_.use_corr_tricks))
-    input_.use_corr_tricks = 1;
+  this->declare_parameter<int>("use_corr_tricks", 1);
+  this->get_parameter ("use_corr_tricks", input_.use_corr_tricks);
+  RCLCPP_INFO(this->get_logger(), "input_.use_corr_tricks: %d", input_.use_corr_tricks);
 
   // Restart: Restart if error is over threshold
-  if (!this->get_parameter ("restart", input_.restart))
-    input_.restart = 0;
+  this->declare_parameter<int>("restart", 0);
+  this->get_parameter ("restart", input_.restart);
+  RCLCPP_INFO(this->get_logger(), "input_.restart: %d", input_.restart);
 
   // Restart: Threshold for restarting
-  if (!this->get_parameter ("restart_threshold_mean_error", input_.restart_threshold_mean_error))
-    input_.restart_threshold_mean_error = 0.01;
+  this->declare_parameter<double>("restart_threshold_mean_error", 0.01);
+  this->get_parameter ("restart_threshold_mean_error", input_.restart_threshold_mean_error);
+  RCLCPP_INFO(this->get_logger(), "input_.restart_threshold_mean_error: %f", input_.restart_threshold_mean_error);
 
   // Restart: displacement for restarting. (m)
-  if (!this->get_parameter ("restart_dt", input_.restart_dt))
-    input_.restart_dt = 1.0;
+  this->declare_parameter<double>("restart_dt", 1.0);
+  this->get_parameter ("restart_dt", input_.restart_dt);
+  RCLCPP_INFO(this->get_logger(), "input_.restart_dt: %f", input_.restart_dt);
 
   // Restart: displacement for restarting. (rad)
-  if (!this->get_parameter ("restart_dtheta", input_.restart_dtheta))
-    input_.restart_dtheta = 0.1;
+  this->declare_parameter<double>("restart_dtheta", 0.1);
+  this->get_parameter ("restart_dtheta", input_.restart_dtheta);
+  RCLCPP_INFO(this->get_logger(), "input_.restart_dtheta: %f", input_.restart_dtheta);
 
   // Max distance for staying in the same clustering
-  if (!this->get_parameter ("clustering_threshold", input_.clustering_threshold))
-    input_.clustering_threshold = 0.25;
+  this->declare_parameter<double>("clustering_threshold", 0.25);
+  this->get_parameter ("clustering_threshold", input_.clustering_threshold);
+  RCLCPP_INFO(this->get_logger(), "input_.clustering_threshold: %f", input_.clustering_threshold);
 
   // Number of neighbour rays used to estimate the orientation
-  if (!this->get_parameter ("orientation_neighbourhood", input_.orientation_neighbourhood))
-    input_.orientation_neighbourhood = 20;
+  this->declare_parameter<int>("orientation_neighbourhood", 20);
+  this->get_parameter ("orientation_neighbourhood", input_.orientation_neighbourhood);
+  RCLCPP_INFO(this->get_logger(), "input_.orientation_neighbourhood: %d", input_.orientation_neighbourhood);
 
   // If 0, it's vanilla ICP
-  if (!this->get_parameter ("use_point_to_line_distance", input_.use_point_to_line_distance))
-    input_.use_point_to_line_distance = 1;
+  this->declare_parameter<int>("use_point_to_line_distance", 1);
+  this->get_parameter ("use_point_to_line_distance", input_.use_point_to_line_distance);
+  RCLCPP_INFO(this->get_logger(), "input_.use_point_to_line_distance: %d", input_.use_point_to_line_distance);
 
   // Discard correspondences based on the angles
-  if (!this->get_parameter ("do_alpha_test", input_.do_alpha_test))
-    input_.do_alpha_test = 0;
+  this->declare_parameter<int>("do_alpha_test", 0);
+  this->get_parameter ("do_alpha_test", input_.do_alpha_test);
+  RCLCPP_INFO(this->get_logger(), "input_.do_alpha_test: %d", input_.do_alpha_test);
 
   // Discard correspondences based on the angles - threshold angle, in degrees
-  if (!this->get_parameter ("do_alpha_test_thresholdDeg", input_.do_alpha_test_thresholdDeg))
-    input_.do_alpha_test_thresholdDeg = 20.0;
+  this->declare_parameter<double>("do_alpha_test_thresholdDeg", 20.0);
+  this->get_parameter ("do_alpha_test_thresholdDeg", input_.do_alpha_test_thresholdDeg);
+  RCLCPP_INFO(this->get_logger(), "input_.do_alpha_test_thresholdDeg: %f", input_.do_alpha_test_thresholdDeg);
 
   // Percentage of correspondences to consider: if 0.9,
   // always discard the top 10% of correspondences with more error
-  if (!this->get_parameter ("outliers_maxPerc", input_.outliers_maxPerc))
-    input_.outliers_maxPerc = 0.90;
+  this->declare_parameter<double>("outliers_maxPerc", 0.90);
+  this->get_parameter ("outliers_maxPerc", input_.outliers_maxPerc);
+  RCLCPP_INFO(this->get_logger(), "input_.outliers_maxPerc: %f", input_.outliers_maxPerc);
 
   // Parameters describing a simple adaptive algorithm for discarding.
   //  1) Order the errors.
@@ -385,39 +447,47 @@ void LaserScanMatcher::initParams()
   //     with the value of the error at the chosen percentile.
   //  4) Discard correspondences over the threshold.
   //  This is useful to be conservative; yet remove the biggest errors.
-  if (!this->get_parameter ("outliers_adaptive_order", input_.outliers_adaptive_order))
-    input_.outliers_adaptive_order = 0.7;
+  this->declare_parameter<double>("outliers_adaptive_order", 0.7);
+  this->get_parameter ("outliers_adaptive_order", input_.outliers_adaptive_order);
+  RCLCPP_INFO(this->get_logger(), "input_.outliers_adaptive_order: %f", input_.outliers_adaptive_order);
 
-  if (!this->get_parameter ("outliers_adaptive_mult", input_.outliers_adaptive_mult))
-    input_.outliers_adaptive_mult = 2.0;
+  this->declare_parameter<double>("outliers_adaptive_mult", 2.0);
+  this->get_parameter ("outliers_adaptive_mult", input_.outliers_adaptive_mult);
+  RCLCPP_INFO(this->get_logger(), "input_.outliers_adaptive_mult: %f", input_.outliers_adaptive_mult);
 
   // If you already have a guess of the solution, you can compute the polar angle
   // of the points of one scan in the new position. If the polar angle is not a monotone
   // function of the readings index, it means that the surface is not visible in the
   // next position. If it is not visible, then we don't use it for matching.
-  if (!this->get_parameter ("do_visibility_test", input_.do_visibility_test))
-    input_.do_visibility_test = 0;
+  this->declare_parameter<int>("do_visibility_test", 0);
+  this->get_parameter ("do_visibility_test", input_.do_visibility_test);
+  RCLCPP_INFO(this->get_logger(), "input_.do_visibility_test: %d", input_.do_visibility_test);
 
   // no two points in laser_sens can have the same corr.
-  if (!this->get_parameter ("outliers_remove_doubles", input_.outliers_remove_doubles))
-    input_.outliers_remove_doubles = 1;
+  this->declare_parameter<int>("outliers_remove_doubles", 1);
+  this->get_parameter ("outliers_remove_doubles", input_.outliers_remove_doubles);
+  RCLCPP_INFO(this->get_logger(), "input_.outliers_remove_doubles: %d", input_.outliers_remove_doubles);
 
   // Compute the covariance of ICP using the method http://purl.org/censi/2006/icpcov
   input_.do_compute_covariance = 1;
+  RCLCPP_INFO(this->get_logger(), "input_.do_compute_covariance: %d", input_.do_compute_covariance);
 
   // Checks that find_correspondences_tricks gives the right answer
-  if (!this->get_parameter ("debug_verify_tricks", input_.debug_verify_tricks))
-    input_.debug_verify_tricks = 0;
+  this->declare_parameter<int>("debug_verify_tricks", 0);
+  this->get_parameter ("debug_verify_tricks", input_.debug_verify_tricks);
+  RCLCPP_INFO(this->get_logger(), "input_.debug_verify_tricks: %d", input_.debug_verify_tricks);
 
   // If 1, the field 'true_alpha' (or 'alpha') in the first scan is used to compute the
   // incidence beta, and the factor (1/cos^2(beta)) used to weight the correspondence.");
-  if (!this->get_parameter ("use_ml_weights", input_.use_ml_weights))
-    input_.use_ml_weights = 0;
+  this->declare_parameter<int>("use_ml_weights", 0);
+  this->get_parameter ("use_ml_weights", input_.use_ml_weights);
+  RCLCPP_INFO(this->get_logger(), "input_.use_ml_weights: %d", input_.use_ml_weights);
 
   // If 1, the field 'readings_sigma' in the second scan is used to weight the
   // correspondence by 1/sigma^2
-  if (!this->get_parameter ("use_sigma_weights", input_.use_sigma_weights))
-    input_.use_sigma_weights = 0;
+  this->declare_parameter<int>("use_sigma_weights", 0);
+  this->get_parameter ("use_sigma_weights", input_.use_sigma_weights);
+  RCLCPP_INFO(this->get_logger(), "input_.use_sigma_weights: %d", input_.use_sigma_weights);
 }
 
 nav_msgs::msg::Odometry* LaserScanMatcher::latestOdomBefore(const rclcpp::Time& time)
