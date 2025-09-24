@@ -21,8 +21,11 @@ derived from the [Laser Scan Matcher](http://wiki.ros.org/laser_scan_matcher)
 package.
 
 ## Installation ROS2
+Install [Nokia CSM](https://gitlabe2.ext.net.nokia.com/dinoff/csm)
+
 ```
-colcon build
+sudo apt install libpotrace-dev
+colcon build --symlink-install
 source ~/colcon_ws/install/setup.bash
 ros2 launch lsm_localization lsm_localization.launch.py
 ```
@@ -327,7 +330,7 @@ These parameters are: `kf_dist_linear`, `kf_dist_angular`,
 `restart_dt`, `restart_dtheta`, `clustering_theta`, `orientation_neighbourhood`,
 `use_point_to_line_distance`, `do_alpha_test`, `do_alpha_test_thresholdDeg`,
 `outliers_maxPerc`, `outliers_adaptive_order`, `outliers_adaptive_mult`,
-`do_visiblity_test`, `outliers_remove_doubles`, `debug_verify_tricks`,
+`do_visibility_test`, `outliers_remove_doubles`, `debug_verify_tricks`,
 `use_ml_weights`, `use_sigma_weights`.
 
 While this may look like a lot, the values listed in example launch
