@@ -165,7 +165,8 @@ LaserScanMatcher::LaserScanMatcher() : rclcpp::Node("laser_scan_matcher"),
   if (use_map_)
   {
     RCLCPP_INFO(this->get_logger(), "using map-based matching");
-    map_subscriber_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>( "map", 1,
+    auto map_qos = rclcpp::QoS(1).transient_local();
+    map_subscriber_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>( "map", map_qos,
       [this](const nav_msgs::msg::OccupancyGrid::SharedPtr msg) {
         this->mapCallback(msg);
     });
