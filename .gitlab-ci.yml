@@ -1,0 +1,22 @@
+variables:
+  GIT_STRATEGY: clone
+  GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_CONCURRENT_ID/$CI_JOB_ID/$CI_PROJECT_NAMESPACE/
+
+stages:
+  - build
+
+build:
+  stage: build
+  tags:
+    - lettuce_bot
+  script:
+    - echo "source cloned in $GIT_CLONE_PATH"
+    - CWD=$(pwd)
+    - echo "CWD is $CWD"
+    - source /opt/ros/humble/setup.bash
+    - mkdir -p ros2_ws/src
+    - rsync -a --exclude='ros2_ws' . ./ros2_ws/src/$CI_PROJECT_NAME/
+    - cd ros2_ws
+    - colcon build --symlink-install
+    - colcon list
+    - source install/setup.bash
