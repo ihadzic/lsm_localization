@@ -66,14 +66,6 @@ def generate_launch_description():
                 {'scan_downsample_rate': LSM_SCAN_DOWNSAMPLE_RATE},
                 {'publish_debug': PUB_DEBUG_TOPICS},
                 {'debug_csm': DEBUG_CSM}
-            ],
-            remappings=[
-                ('scan', 'kale_bot/republisher/scan'),
-                ('lsm_localization/initialpose', 'lsm/initialpose'),
-                ('lsm_localization/pose', 'lsm/pose'),
-                ('lsm_localization/constructed_scan', 'lsm/constructed_scan'),
-                ('lsm_localization/measured_pose', 'lsm/measured_pose'),
-                ('lsm_localization/predicted_pose', 'lsm/predicted_pose')
             ]
         )
 
